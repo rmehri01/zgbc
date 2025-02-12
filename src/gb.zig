@@ -3,8 +3,20 @@ const assert = std.debug.assert;
 const testing = std.testing;
 
 /// The main state of the gameboy emulator.
-const GameBoy = struct {
+pub const State = struct {
     registers: RegisterFile,
+
+    pub fn fetch_op_code(self: *@This()) u8 {
+        _ = self; // autofix
+        // TODO: implement
+        return 0;
+    }
+
+    pub fn fetch_d16(self: *@This()) u16 {
+        _ = self; // autofix
+        // TODO: implement
+        return 0;
+    }
 };
 
 /// Most registers can be accessed as one 16-bit register
