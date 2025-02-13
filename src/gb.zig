@@ -2,20 +2,14 @@ const std = @import("std");
 const assert = std.debug.assert;
 const testing = std.testing;
 
+pub const Addr = u16;
+
 /// The main state of the gameboy emulator.
 pub const State = struct {
     registers: RegisterFile,
 
-    pub fn fetch_op_code(self: *@This()) u8 {
+    pub fn tick(self: *@This()) void {
         _ = self; // autofix
-        // TODO: implement
-        return 0;
-    }
-
-    pub fn fetch_d16(self: *@This()) u16 {
-        _ = self; // autofix
-        // TODO: implement
-        return 0;
     }
 };
 
