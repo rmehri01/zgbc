@@ -32,7 +32,7 @@ pub fn exec(gb: *gameboy.State) void {
         0x15 => dec_r(gb, &gb.registers.named8.d),
         0x16 => ld_r_d8(gb, &gb.registers.named8.d),
         0x17 => rla(gb),
-        0x18 => jr_r8(gb),
+        0x18 => jr_s8(gb),
         0x19 => add_hl_rr(gb, &gb.registers.named16.de),
         0x1a => ld_a_drr(gb, &gb.registers.named16.de),
         0x1b => dec_rr(gb, &gb.registers.named16.de),
@@ -41,7 +41,7 @@ pub fn exec(gb: *gameboy.State) void {
         0x1e => ld_r_d8(gb, &gb.registers.named8.e),
         0x1f => rra(gb),
 
-        0x20 => jr_cc_r8(gb, !gb.registers.named8.f.z),
+        0x20 => jr_cc_s8(gb, !gb.registers.named8.f.z),
         0x21 => ld_rr_d16(gb, &gb.registers.named16.hl),
         0x22 => ld_dhl_inc_a(gb),
         0x23 => inc_rr(gb, &gb.registers.named16.hl),
@@ -49,7 +49,7 @@ pub fn exec(gb: *gameboy.State) void {
         0x25 => dec_r(gb, &gb.registers.named8.h),
         0x26 => ld_r_d8(gb, &gb.registers.named8.h),
         0x27 => daa(gb),
-        0x28 => jr_cc_r8(gb, gb.registers.named8.f.z),
+        0x28 => jr_cc_s8(gb, gb.registers.named8.f.z),
         0x29 => add_hl_rr(gb, &gb.registers.named16.hl),
         0x2a => ld_a_dhl_inc(gb),
         0x2b => dec_rr(gb, &gb.registers.named16.hl),
@@ -58,7 +58,7 @@ pub fn exec(gb: *gameboy.State) void {
         0x2e => ld_r_d8(gb, &gb.registers.named8.l),
         0x2f => cpl(gb),
 
-        0x30 => jr_cc_r8(gb, !gb.registers.named8.f.c),
+        0x30 => jr_cc_s8(gb, !gb.registers.named8.f.c),
         0x31 => ld_rr_d16(gb, &gb.registers.named16.sp),
         0x32 => ld_dhl_dec_a(gb),
         0x33 => inc_rr(gb, &gb.registers.named16.sp),
@@ -66,7 +66,7 @@ pub fn exec(gb: *gameboy.State) void {
         0x35 => dec_dhl(gb),
         0x36 => ld_dhl_d8(gb),
         0x37 => scf(gb),
-        0x38 => jr_cc_r8(gb, gb.registers.named8.f.c),
+        0x38 => jr_cc_s8(gb, gb.registers.named8.f.c),
         0x39 => add_hl_rr(gb, &gb.registers.named16.sp),
         0x3a => ld_a_dhl_dec(gb),
         0x3b => dec_rr(gb, &gb.registers.named16.sp),
@@ -212,11 +212,11 @@ pub fn exec(gb: *gameboy.State) void {
         0xbf => cp_a_r(u8, gb, &gb.registers.named8.a),
 
         0xc0 => ret_cc(gb, !gb.registers.named8.f.z),
-        0xc1 => pop_rr(&gb.registers.named16.bc),
+        0xc1 => pop_rr(gb, &gb.registers.named16.bc),
         0xc2 => jp_cc_a16(gb, !gb.registers.named8.f.z),
         0xc3 => jp_a16(gb),
         0xc4 => call_cc_a16(gb, !gb.registers.named8.f.z),
-        0xc5 => push_rr(&gb.registers.named16.bc),
+        0xc5 => push_rr(gb, &gb.registers.named16.bc),
         0xc6 => add_a_d8(gb),
         0xc7 => rst(gb, 0x00),
         0xc8 => ret_cc(gb, gb.registers.named8.f.z),
@@ -229,11 +229,11 @@ pub fn exec(gb: *gameboy.State) void {
         0xcf => rst(gb, 0x08),
 
         0xd0 => ret_cc(gb, !gb.registers.named8.f.c),
-        0xd1 => pop_rr(&gb.registers.named16.de),
+        0xd1 => pop_rr(gb, &gb.registers.named16.de),
         0xd2 => jp_cc_a16(gb, !gb.registers.named8.f.c),
         0xd3 => illegal(),
         0xd4 => call_cc_a16(gb, !gb.registers.named8.f.c),
-        0xd5 => push_rr(&gb.registers.named16.de),
+        0xd5 => push_rr(gb, &gb.registers.named16.de),
         0xd6 => sub_a_d8(gb),
         0xd7 => rst(gb, 0x10),
         0xd8 => ret_cc(gb, gb.registers.named8.f.c),
@@ -246,14 +246,14 @@ pub fn exec(gb: *gameboy.State) void {
         0xdf => rst(gb, 0x18),
 
         0xe0 => ld_da8_a(gb),
-        0xe1 => pop_rr(&gb.registers.named16.hl),
+        0xe1 => pop_rr(gb, &gb.registers.named16.hl),
         0xe2 => ld_dc_a(gb),
         0xe3 => illegal(),
         0xe4 => illegal(),
-        0xe5 => push_rr(&gb.registers.named16.hl),
+        0xe5 => push_rr(gb, &gb.registers.named16.hl),
         0xe6 => and_a_d8(gb),
         0xe7 => rst(gb, 0x20),
-        0xe8 => add_sp_r8(gb),
+        0xe8 => add_sp_s8(gb),
         0xe9 => jp_hl(gb),
         0xea => ld_da16_a(gb),
         0xeb => illegal(),
@@ -263,14 +263,14 @@ pub fn exec(gb: *gameboy.State) void {
         0xef => rst(gb, 0x28),
 
         0xf0 => ld_a_da8(gb),
-        0xf1 => pop_rr(&gb.registers.named16.af),
+        0xf1 => pop_rr(gb, &gb.registers.named16.af),
         0xf2 => ld_a_dc(gb),
         0xf3 => di(gb),
         0xf4 => illegal(),
-        0xf5 => push_rr(&gb.registers.named16.af),
+        0xf5 => push_rr(gb, &gb.registers.named16.af),
         0xf6 => or_a_d8(gb),
         0xf7 => rst(gb, 0x30),
-        0xf8 => ld_hl_sp_r8(gb),
+        0xf8 => ld_hl_sp_s8(gb),
         0xf9 => ld_sp_hl(gb),
         0xfa => ld_a_da16(gb),
         0xfb => ei(gb),
@@ -342,7 +342,7 @@ fn rlca(gb: *gameboy.State) void {
 fn ld_da16_sp(gb: *gameboy.State) void {
     const addr: gameboy.Addr = fetch16(gb);
 
-    cycleWrite(gb, addr, @intCast(gb.registers.named16.sp & 0xff));
+    cycleWrite(gb, addr, @intCast(gb.registers.named16.sp & 0x00ff));
     cycleWrite(gb, addr + 1, @intCast(gb.registers.named16.sp & 0xff00));
 }
 
@@ -401,10 +401,9 @@ fn rla(gb: *gameboy.State) void {
     gb.registers.named8.f.c = bit7;
 }
 
-/// Jump r8 steps from the current address in the program counter.
-fn jr_r8(gb: *gameboy.State) void {
-    gb.tick();
-    gb.registers.named16.pc +%= fetch8(gb);
+/// Jump `s8` steps from the current address in the program counter.
+fn jr_s8(gb: *gameboy.State) void {
+    jr_cc_s8(gb, true);
 }
 
 /// Rotate the contents of register `A` to the right,
@@ -421,21 +420,25 @@ fn rra(gb: *gameboy.State) void {
     gb.registers.named8.f.c = bit0;
 }
 
-/// Jump r8 steps from the current address in the program counter
-/// if the condition is true.
-fn jr_cc_r8(gb: *gameboy.State, condition: bool) void {
-    const offset = fetch8(gb);
+/// Jump `s8` steps from the current address in the program counter
+/// if the `condition` is true.
+fn jr_cc_s8(gb: *gameboy.State, condition: bool) void {
+    const offset: i8 = @bitCast(fetch8(gb));
 
     if (condition) {
         gb.tick();
-        gb.registers.named16.pc +%= offset;
+        if (offset < 0) {
+            gb.registers.named16.pc -%= @abs(offset);
+        } else {
+            gb.registers.named16.pc +%= @abs(offset);
+        }
     }
 }
 
 /// Store the contents of register `A` into the memory location specified
 /// by register pair `HL` and simultaneously increment `HL`.
 fn ld_dhl_inc_a(gb: *gameboy.State) void {
-    cycleWrite(gb, gb.registers.named16.hl, gb.registers.named8.a);
+    ld_dhl_r(gb, &gb.registers.named8.a);
     gb.registers.named16.hl +%= 1;
 }
 
@@ -477,7 +480,7 @@ fn daa(gb: *gameboy.State) void {
 /// Load the contents of memory specified by register pair `HL` into
 /// register `A` and simultaneously increment the contents of `HL`.
 fn ld_a_dhl_inc(gb: *gameboy.State) void {
-    gb.registers.named8.a = cycleRead(gb, gb.registers.named16.hl);
+    ld_r_dhl(gb, &gb.registers.named8.a);
     gb.registers.named16.hl +%= 1;
 }
 
@@ -492,7 +495,7 @@ fn cpl(gb: *gameboy.State) void {
 /// Store the contents of register `A` into the memmory location specified
 /// by the register pair `HL` and simultaneously decrement `HL`.
 fn ld_dhl_dec_a(gb: *gameboy.State) void {
-    cycleWrite(gb, gb.registers.named16.hl, gb.registers.named8.a);
+    ld_dhl_r(gb, &gb.registers.named8.a);
     gb.registers.named16.hl -%= 1;
 }
 
@@ -533,7 +536,7 @@ fn scf(gb: *gameboy.State) void {
 /// Load the contents of memory specified by register pair `HL` into register `A`
 /// and simultaneously decrement `HL`.
 fn ld_a_dhl_dec(gb: *gameboy.State) void {
-    gb.registers.named8.a = cycleRead(gb, gb.registers.named16.hl);
+    ld_r_dhl(gb, &gb.registers.named8.a);
     gb.registers.named16.hl -%= 1;
 }
 
@@ -573,19 +576,330 @@ fn halt(gb: *gameboy.State) void {
 /// contents of register `A` and store the results in register `A`.
 fn add_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
     const src = getSrc(T, gb, r);
-    const value, const overflowed = @addWithOverflow(gb.registers.named8.a, src);
-    gb.registers.named8.a = value;
-
-    gb.registers.named8.f.z = value == 0;
-    gb.registers.named8.f.n = false;
-    gb.registers.named8.f.h = @addWithOverflow(@as(u4, @truncate(gb.registers.named8.a)), @as(u4, @truncate(r.*)))[1] == 1;
-    gb.registers.named8.f.c = overflowed == 1;
+    add_a_x(gb, src);
 }
 
 /// Add the contents of register `r` or the memory pointed to by `r` and the
 /// carry flag to the contents of register `A` and store the results in `A`.
 fn adc_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
     const src = getSrc(T, gb, r);
+    adc_a_x(gb, src);
+}
+
+/// Subtract the contents of register `r` or the memory pointed to by `r` from the
+/// contents of register `A` and store the results in register `A`.
+fn sub_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
+    const src = getSrc(T, gb, r);
+    sub_a_x(gb, src);
+}
+
+/// Subtract the contents of register `r` or the memory pointed to by `r` and the
+/// carry flag from the contents of register `A`, and store the results in `A`.
+fn sbc_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
+    const src = getSrc(T, gb, r);
+    sbc_a_x(gb, src);
+}
+
+/// Take the bitwise AND of register `r` or the memory pointed to by `r` and
+/// register `A`, and store the results in `A`.
+fn and_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
+    const src = getSrc(T, gb, r);
+    and_a_x(gb, src);
+}
+
+/// Take the bitwise XOR of register `r` or the memory pointed to by `r` and
+/// register `A`, and store the results in `A`.
+fn xor_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
+    const src = getSrc(T, gb, r);
+    xor_a_x(gb, src);
+}
+
+/// Take the bitwise OR of register `r` or the memory pointed to by `r` and
+/// register `A`, and store the results in `A`.
+fn or_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
+    const src = getSrc(T, gb, r);
+    or_a_x(gb, src);
+}
+
+/// Compare the contents of register `r` or the memory pointed to by `r` and
+/// the contents of register `A` by calculating `A - B`, and set the `Z` flag
+/// if they are equal.
+fn cp_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
+    const src = getSrc(T, gb, r);
+    cp_a_x(gb, src);
+}
+
+/// If the `condition` is true, control is returned to the source program by
+/// popping from the memory stack the program counter value that was pushed
+/// to the stack when the subroutine was called.
+fn ret_cc(gb: *gameboy.State, condition: bool) void {
+    gb.tick();
+
+    if (condition) {
+        ret(gb);
+    }
+}
+
+/// Pop the contents from the memory stack into register pair `rr`.
+fn pop_rr(gb: *gameboy.State, rr: *u16) void {
+    const lo = cycleRead(gb, gb.registers.named16.sp);
+    gb.registers.named16.sp +%= 1;
+    const hi = cycleRead(gb, gb.registers.named16.sp);
+    gb.registers.named16.sp +%= 1;
+
+    rr.* = @as(u16, hi) << 8 | lo;
+}
+
+/// Load the 16-bit immediate operand `a16` into the program counter if
+/// the `condition` is true. If the `condition` is true, then the subsequent
+/// instruction starts at address `a16`. If not, the contents of `PC` are
+/// incremented, and the next instruction following the current JP instruction
+/// is executed (as usual).
+fn jp_cc_a16(gb: *gameboy.State, condition: bool) void {
+    const addr: gameboy.Addr = fetch16(gb);
+
+    if (condition) {
+        gb.tick();
+        gb.registers.named16.pc = addr;
+    }
+}
+
+/// Load the 16-bit immediate operand `a16` into the program counter.
+/// `a16` specifies the address of the subsequently executed instruction.
+fn jp_a16(gb: *gameboy.State) void {
+    jp_cc_a16(gb, true);
+}
+
+/// If the `condition` is true, the program counter value corresponding to the
+/// memory location of the instruction following the CALL instruction is pushed
+/// to the 2 bytes following the memory byte specified by the stack pointer. The
+/// 16-bit immediate operand `a16` is then loaded into PC.
+fn call_cc_a16(gb: *gameboy.State, condition: bool) void {
+    const addr: gameboy.Addr = fetch16(gb);
+
+    if (condition) {
+        push_rr(gb, &gb.registers.named16.pc);
+        gb.registers.named16.pc = addr;
+    }
+}
+
+/// Push the contents of register pair `rr` onto the memory stack.
+fn push_rr(gb: *gameboy.State, rr: *const u16) void {
+    gb.tick();
+
+    gb.registers.named16.sp -%= 1;
+    cycleWrite(gb, gb.registers.named16.sp, @intCast(rr.* & 0xff00));
+    gb.registers.named16.sp -%= 1;
+    cycleWrite(gb, gb.registers.named16.sp, @intCast(rr.* & 0x00ff));
+}
+
+/// Add the contents of the 8-bit immediate operand `d8` to the contents of register `A`,
+/// and store the results in `A`.
+fn add_a_d8(gb: *gameboy.State) void {
+    const src = fetch8(gb);
+    add_a_x(gb, src);
+}
+
+fn rst(gb: *gameboy.State, value: u8) void {
+    _ = gb;
+    _ = value;
+}
+
+/// Pop from the memory stack the program counter value pushed when the
+/// subroutine was called, returning control to the source program.
+fn ret(gb: *gameboy.State) void {
+    gb.tick();
+    pop_rr(gb, &gb.registers.named16.pc);
+}
+
+/// In memory, push the program counter value corresponding to the address following
+/// the CALL instruction to the 2 bytes following the byte specified by the current
+/// stack pointer. Then load the 16-bit immediate operand `a16` into `PC`.
+///
+/// The subroutine is placed after the location specified by the new PC value. When
+/// the subroutine finishes, control is returned to the source program using a return
+/// instruction and by popping the starting address of the next instruction (which
+/// was just pushed) and moving it to the `PC`.
+///
+/// With the push, the current value of `SP` is decremented by 1, and the higher-order
+/// byte of `PC` is loaded in the memory address specified by the new `SP` value. The
+/// value of `SP` is then decremented by 1 again, and the lower-order byte of `PC` is
+/// loaded in the memory address specified by that value of `SP`.
+fn call_a16(gb: *gameboy.State) void {
+    call_cc_a16(gb, true);
+}
+
+/// Add the contents of the 8-bit immediate operand `d8` and the `CY` flag to the
+/// contents of register `A`, and store the results in `A`.
+fn adc_a_d8(gb: *gameboy.State) void {
+    const src = fetch8(gb);
+    adc_a_x(gb, src);
+}
+
+/// Subtract the contents of the 8-bit immediate operand `d8` from the contents of
+/// register `A`, and store the results in `A`.
+fn sub_a_d8(gb: *gameboy.State) void {
+    const src = fetch8(gb);
+    sub_a_x(gb, src);
+}
+
+fn reti(gb: *gameboy.State) void {
+    _ = gb;
+}
+
+/// Subtract the contents of the 8-bit immediate operand `d8` and the carry flag
+/// from the contents of register `A`, and store the results in `A`.
+fn sbc_a_d8(gb: *gameboy.State) void {
+    const src = fetch8(gb);
+    sbc_a_x(gb, src);
+}
+
+/// Store the contents of register `A` in the internal RAM, port register, or mode
+/// register at the address in the range `0xFF00`-`0xFFFF` specified by the 8-bit
+/// immediate operand a8.
+fn ld_da8_a(gb: *gameboy.State) void {
+    const imm = fetch8(gb);
+    cycleWrite(gb, @as(u16, 0xff00) + imm, gb.registers.named8.a);
+}
+
+/// Store the contents of register `A` in the internal RAM, port register, or mode
+/// register at the address in the range `0xFF00`-`0xFFFF` specified by register `C`.
+fn ld_dc_a(gb: *gameboy.State) void {
+    cycleWrite(gb, @as(u16, 0xff00) + gb.registers.named8.c, gb.registers.named8.a);
+}
+
+/// Take bitwise AND of the contents of 8-bit immediate operand `d8` and the contents
+/// of register `A`, and store the results in `A`.
+fn and_a_d8(gb: *gameboy.State) void {
+    const src = fetch8(gb);
+    and_a_x(gb, src);
+}
+
+/// Add the contents of the 8-bit signed immediate operand `s8` and the stack pointer,
+/// and store the results in `SP`.
+fn add_sp_s8(gb: *gameboy.State) void {
+    gb.tick();
+    gb.tick();
+
+    const offset: i8 = @bitCast(fetch8(gb));
+    const value, const overflowed = if (offset < 0) result: {
+        break :result @subWithOverflow(gb.registers.named16.sp, @abs(offset));
+    } else result: {
+        break :result @addWithOverflow(gb.registers.named16.sp, @abs(offset));
+    };
+    gb.registers.named16.sp = value;
+
+    gb.registers.named8.f.z = false;
+    gb.registers.named8.f.n = false;
+    gb.registers.named8.f.h =
+        @addWithOverflow(@as(u4, @truncate(gb.registers.named16.sp)), @as(u4, @truncate(@as(u8, @bitCast(offset)))))[1] == 1;
+    gb.registers.named8.f.c = overflowed == 1;
+}
+
+/// Load the contents of register pair `HL` into the program counter. The next instruction
+/// is fetched from the location specified by the new value of `PC`.
+fn jp_hl(gb: *gameboy.State) void {
+    gb.registers.named16.pc = gb.registers.named16.hl;
+}
+
+/// Add the 8-bit signed operand `s8` (values -128 to +127) to the stack pointer `SP`,
+/// and store the result in register pair `HL`.
+fn ld_hl_sp_s8(gb: *gameboy.State) void {
+    gb.tick();
+
+    const offset: i8 = @bitCast(fetch8(gb));
+    const value, const overflowed = if (offset < 0) result: {
+        break :result @subWithOverflow(gb.registers.named16.sp, @abs(offset));
+    } else result: {
+        break :result @addWithOverflow(gb.registers.named16.sp, @abs(offset));
+    };
+    gb.registers.named16.hl = value;
+
+    gb.registers.named8.f.z = false;
+    gb.registers.named8.f.n = false;
+    gb.registers.named8.f.h =
+        @addWithOverflow(@as(u4, @truncate(gb.registers.named16.sp)), @as(u4, @truncate(@as(u8, @bitCast(offset)))))[1] == 1;
+    gb.registers.named8.f.c = overflowed == 1;
+}
+
+/// Load the contents of register pair `HL` into the stack pointer `SP`.
+fn ld_sp_hl(gb: *gameboy.State) void {
+    gb.tick();
+    gb.registers.named16.sp = gb.registers.named16.hl;
+}
+
+/// Store the contents of register `A` in the internal RAM or register specified by
+/// the 16-bit immediate operand `a16`.
+fn ld_da16_a(gb: *gameboy.State) void {
+    const addr: gameboy.Addr = fetch16(gb);
+    cycleWrite(gb, addr, gb.registers.named8.a);
+}
+
+/// Take the bitwise XOR of the contents of the 8-bit immediate operand `d8` and
+/// the contents of register `A`, and store the results in register `A`.
+fn xor_a_d8(gb: *gameboy.State) void {
+    const src = fetch8(gb);
+    xor_a_x(gb, src);
+}
+
+/// Load into register `A` the contents of the internal RAM, port register, or mode
+/// register at the address in the range `0xFF00`-`0xFFFF` specified by the 8-bit
+/// immediate operand `a8`.
+fn ld_a_da8(gb: *gameboy.State) void {
+    const imm = fetch8(gb);
+    gb.registers.named8.a = cycleRead(gb, @as(u16, 0xff00) + imm);
+}
+
+/// Load into register `A` the contents of the internal RAM, port register, or mode
+/// register at the address in the range `0xFF00`-`0xFFFF` specified by register `C`.
+fn ld_a_dc(gb: *gameboy.State) void {
+    gb.registers.named8.a = cycleRead(gb, @as(u16, 0xff00) + gb.registers.named8.c);
+}
+
+fn di(gb: *gameboy.State) void {
+    _ = gb;
+}
+
+/// Take the bitwise OR of the contents of the 8-bit immediate operand `d8` and
+/// the contents of register `A`, and store the results in `A`.
+fn or_a_d8(gb: *gameboy.State) void {
+    const src = fetch8(gb);
+    or_a_x(gb, src);
+}
+
+/// Load into register `A` the contents of the internal RAM or register specified
+/// by the 16-bit immediate operand `a16`.
+fn ld_a_da16(gb: *gameboy.State) void {
+    const addr: gameboy.Addr = fetch16(gb);
+    gb.registers.named8.a = cycleRead(gb, addr);
+}
+
+fn ei(gb: *gameboy.State) void {
+    _ = gb;
+}
+
+/// Compare the contents of register `A` and the contents of the 8-bit immediate
+/// operand `d8` by calculating `A - d8`, and set the `Z` flag if they are equal.
+fn cp_a_d8(gb: *gameboy.State) void {
+    const src = fetch8(gb);
+    cp_a_x(gb, src);
+}
+
+fn illegal() void {
+    // TODO: handle
+}
+
+fn add_a_x(gb: *gameboy.State, src: u8) void {
+    const value, const overflowed = @addWithOverflow(gb.registers.named8.a, src);
+    gb.registers.named8.a = value;
+
+    gb.registers.named8.f.z = value == 0;
+    gb.registers.named8.f.n = false;
+    gb.registers.named8.f.h = @addWithOverflow(@as(u4, @truncate(gb.registers.named8.a)), @as(u4, @truncate(src)))[1] == 1;
+    gb.registers.named8.f.c = overflowed == 1;
+}
+
+fn adc_a_x(gb: *gameboy.State, src: u8) void {
     const value, const overflow = addManyWithOverflow(u8, 3, [_]u8{
         gb.registers.named8.a,
         src,
@@ -597,29 +911,23 @@ fn adc_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
     gb.registers.named8.f.n = false;
     gb.registers.named8.f.h = addManyWithOverflow(u4, 3, [_]u4{
         @as(u4, @truncate(gb.registers.named8.a)),
-        @as(u4, @truncate(r.*)),
+        @as(u4, @truncate(src)),
         @intFromBool(gb.registers.named8.f.c),
     })[1];
     gb.registers.named8.f.c = overflow;
 }
 
-/// Subtract the contents of register `r` or the memory pointed to by `r` from the
-/// contents of register `A` and store the results in register `A`.
-fn sub_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
-    const src = getSrc(T, gb, r);
+fn sub_a_x(gb: *gameboy.State, src: u8) void {
     const value, const overflowed = @subWithOverflow(gb.registers.named8.a, src);
     gb.registers.named8.a = value;
 
     gb.registers.named8.f.z = value == 0;
     gb.registers.named8.f.n = true;
-    gb.registers.named8.f.h = @subWithOverflow(@as(u4, @truncate(gb.registers.named8.a)), @as(u4, @truncate(r.*)))[1] == 1;
+    gb.registers.named8.f.h = @subWithOverflow(@as(u4, @truncate(gb.registers.named8.a)), @as(u4, @truncate(src)))[1] == 1;
     gb.registers.named8.f.c = overflowed == 1;
 }
 
-/// Subtract the contents of register `r` or the memory pointed to by `r` and the
-/// carry flag from the contents of register `A`, and store the results in `A`.
-fn sbc_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
-    const src = getSrc(T, gb, r);
+fn sbc_a_x(gb: *gameboy.State, src: u8) void {
     const value, const overflowed = subManyWithOverflow(u8, 3, [_]u8{ gb.registers.named8.a, src, @intFromBool(gb.registers.named8.f.c) });
     gb.registers.named8.a = value;
 
@@ -627,16 +935,13 @@ fn sbc_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
     gb.registers.named8.f.n = true;
     gb.registers.named8.f.h = subManyWithOverflow(u4, 3, [_]u4{
         @as(u4, @truncate(gb.registers.named8.a)),
-        @as(u4, @truncate(r.*)),
+        @as(u4, @truncate(src)),
         @intFromBool(gb.registers.named8.f.c),
     })[1];
     gb.registers.named8.f.c = overflowed;
 }
 
-/// Take the bitwise AND of register `r` or the memory pointed to by `r` and
-/// register `A`, and store the results in `A`.
-fn and_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
-    const src = getSrc(T, gb, r);
+fn and_a_x(gb: *gameboy.State, src: u8) void {
     const value = gb.registers.named8.a & src;
     gb.registers.named8.a = value;
 
@@ -646,10 +951,7 @@ fn and_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
     gb.registers.named8.f.c = false;
 }
 
-/// Take the bitwise XOR of register `r` or the memory pointed to by `r` and
-/// register `A`, and store the results in `A`.
-fn xor_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
-    const src = getSrc(T, gb, r);
+fn xor_a_x(gb: *gameboy.State, src: u8) void {
     const value = gb.registers.named8.a ^ src;
     gb.registers.named8.a = value;
 
@@ -659,10 +961,7 @@ fn xor_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
     gb.registers.named8.f.c = false;
 }
 
-/// Take the bitwise OR of register `r` or the memory pointed to by `r` and
-/// register `A`, and store the results in `A`.
-fn or_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
-    const src = getSrc(T, gb, r);
+fn or_a_x(gb: *gameboy.State, src: u8) void {
     const value = gb.registers.named8.a | src;
     gb.registers.named8.a = value;
 
@@ -672,11 +971,7 @@ fn or_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
     gb.registers.named8.f.c = false;
 }
 
-/// Compare the contents of register `r` or the memory pointed to by `r` and
-/// the contents of register `A` by calculating `A - B`, and set the `Z` flag
-/// if they are equal.
-fn cp_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
-    const src = getSrc(T, gb, r);
+fn cp_a_x(gb: *gameboy.State, src: u8) void {
     const value, const overflowed = @subWithOverflow(gb.registers.named8.a, src);
 
     gb.registers.named8.f.z = value == 0;
@@ -685,134 +980,7 @@ fn cp_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
     gb.registers.named8.f.c = overflowed == 1;
 }
 
-fn ret_cc(gb: *gameboy.State, condition: bool) void {
-    _ = gb;
-    _ = condition;
-}
-
-fn pop_rr(rr: *u16) void {
-    _ = rr;
-}
-
-fn jp_cc_a16(gb: *gameboy.State, condition: bool) void {
-    _ = gb;
-    _ = condition;
-}
-
-fn jp_a16(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn call_cc_a16(gb: *gameboy.State, condition: bool) void {
-    _ = gb;
-    _ = condition;
-}
-
-fn push_rr(rr: *u16) void {
-    _ = rr;
-}
-
-fn add_a_d8(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn rst(gb: *gameboy.State, value: u8) void {
-    _ = gb;
-    _ = value;
-}
-
-fn ret(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn call_a16(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn adc_a_d8(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn sub_a_d8(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn reti(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn sbc_a_d8(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn ld_da8_a(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn ld_dc_a(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn and_a_d8(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn add_sp_r8(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn jp_hl(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn ld_hl_sp_r8(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn ld_sp_hl(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn ld_da16_a(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn xor_a_d8(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn ld_a_da8(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn ld_a_dc(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn di(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn or_a_d8(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn ld_a_da16(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn ei(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn cp_a_d8(gb: *gameboy.State) void {
-    _ = gb;
-}
-
-fn illegal() void {
-    // TODO: handle
-}
-
+/// Fetches 16 bits from the memory pointed to by `PC`, incrementing `PC` twice.
 fn fetch16(gb: *gameboy.State) u16 {
     const lo = fetch8(gb);
     const hi = fetch8(gb);
@@ -820,6 +988,7 @@ fn fetch16(gb: *gameboy.State) u16 {
     return @as(u16, hi) << 8 | lo;
 }
 
+/// Fetches 8 bits from the memory pointed to by `PC` and incrementing `PC`.
 fn fetch8(gb: *gameboy.State) u8 {
     const value = cycleRead(gb, gb.registers.named16.pc);
     gb.registers.named16.pc +%= 1;
