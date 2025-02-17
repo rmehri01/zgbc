@@ -5,6 +5,14 @@ const gameboy = @import("gb.zig");
 
 /// Executes a single CPU instruction.
 pub fn exec(gb: *gameboy.State) void {
+    // If the scheduled `ei` instruction wasn't cancelled, then enable
+    // interrupts after the next instruction runs.
+    const scheduled_ei = gb.scheduled_ei;
+    defer if (scheduled_ei and gb.scheduled_ei) {
+        @branchHint(.unlikely);
+        gb.ime = true;
+    };
+
     const op_code = fetch8(gb);
     switch (op_code) {
         0x00 => nop(),
@@ -218,7 +226,7 @@ pub fn exec(gb: *gameboy.State) void {
         0xc4 => call_cc_a16(gb, !gb.registers.named8.f.z),
         0xc5 => push_rr(gb, &gb.registers.named16.bc),
         0xc6 => add_a_d8(gb),
-        0xc7 => rst(gb, 0x00),
+        0xc7 => rst(gb, 0),
         0xc8 => ret_cc(gb, gb.registers.named8.f.z),
         0xc9 => ret(gb),
         0xca => jp_cc_a16(gb, gb.registers.named8.f.z),
@@ -226,7 +234,7 @@ pub fn exec(gb: *gameboy.State) void {
         0xcc => call_cc_a16(gb, gb.registers.named8.f.z),
         0xcd => call_a16(gb),
         0xce => adc_a_d8(gb),
-        0xcf => rst(gb, 0x08),
+        0xcf => rst(gb, 1),
 
         0xd0 => ret_cc(gb, !gb.registers.named8.f.c),
         0xd1 => pop_rr(gb, &gb.registers.named16.de),
@@ -235,7 +243,7 @@ pub fn exec(gb: *gameboy.State) void {
         0xd4 => call_cc_a16(gb, !gb.registers.named8.f.c),
         0xd5 => push_rr(gb, &gb.registers.named16.de),
         0xd6 => sub_a_d8(gb),
-        0xd7 => rst(gb, 0x10),
+        0xd7 => rst(gb, 2),
         0xd8 => ret_cc(gb, gb.registers.named8.f.c),
         0xd9 => reti(gb),
         0xda => jp_cc_a16(gb, gb.registers.named8.f.c),
@@ -243,7 +251,7 @@ pub fn exec(gb: *gameboy.State) void {
         0xdc => call_cc_a16(gb, gb.registers.named8.f.c),
         0xdd => illegal(),
         0xde => sbc_a_d8(gb),
-        0xdf => rst(gb, 0x18),
+        0xdf => rst(gb, 3),
 
         0xe0 => ld_da8_a(gb),
         0xe1 => pop_rr(gb, &gb.registers.named16.hl),
@@ -252,7 +260,7 @@ pub fn exec(gb: *gameboy.State) void {
         0xe4 => illegal(),
         0xe5 => push_rr(gb, &gb.registers.named16.hl),
         0xe6 => and_a_d8(gb),
-        0xe7 => rst(gb, 0x20),
+        0xe7 => rst(gb, 4),
         0xe8 => add_sp_s8(gb),
         0xe9 => jp_hl(gb),
         0xea => ld_da16_a(gb),
@@ -260,7 +268,7 @@ pub fn exec(gb: *gameboy.State) void {
         0xec => illegal(),
         0xed => illegal(),
         0xee => xor_a_d8(gb),
-        0xef => rst(gb, 0x28),
+        0xef => rst(gb, 5),
 
         0xf0 => ld_a_da8(gb),
         0xf1 => pop_rr(gb, &gb.registers.named16.af),
@@ -269,7 +277,7 @@ pub fn exec(gb: *gameboy.State) void {
         0xf4 => illegal(),
         0xf5 => push_rr(gb, &gb.registers.named16.af),
         0xf6 => or_a_d8(gb),
-        0xf7 => rst(gb, 0x30),
+        0xf7 => rst(gb, 6),
         0xf8 => ld_hl_sp_s8(gb),
         0xf9 => ld_sp_hl(gb),
         0xfa => ld_a_da16(gb),
@@ -277,7 +285,7 @@ pub fn exec(gb: *gameboy.State) void {
         0xfc => illegal(),
         0xfd => illegal(),
         0xfe => cp_a_d8(gb),
-        0xff => rst(gb, 0x38),
+        0xff => rst(gb, 7),
     }
 }
 
@@ -700,9 +708,11 @@ fn add_a_d8(gb: *gameboy.State) void {
     add_a_x(gb, src);
 }
 
-fn rst(gb: *gameboy.State, value: u8) void {
-    _ = gb;
-    _ = value;
+/// Push the current value of the program counter onto the memory stack, and
+/// load into `PC` the nth byte of page 0 memory addresses.
+fn rst(gb: *gameboy.State, comptime n: u8) void {
+    push_rr(gb, &gb.registers.named16.pc);
+    gb.registers.named16.pc = n * 0x08;
 }
 
 /// Pop from the memory stack the program counter value pushed when the
@@ -743,8 +753,12 @@ fn sub_a_d8(gb: *gameboy.State) void {
     sub_a_x(gb, src);
 }
 
+/// Used when an interrupt-service routine finishes. The address for the return
+/// from the interrupt is loaded in the program counter `PC`. The master interrupt
+/// enable flag is returned to its pre-interrupt status.
 fn reti(gb: *gameboy.State) void {
-    _ = gb;
+    ret(gb);
+    gb.ime = true;
 }
 
 /// Subtract the contents of the 8-bit immediate operand `d8` and the carry flag
@@ -856,8 +870,12 @@ fn ld_a_dc(gb: *gameboy.State) void {
     gb.registers.named8.a = cycleRead(gb, @as(u16, 0xff00) + gb.registers.named8.c);
 }
 
+/// Reset the interrupt master enable flag and prohibit maskable interrupts.
+///
+/// Cancels any scheduled effects of the EI instruction.
 fn di(gb: *gameboy.State) void {
-    _ = gb;
+    gb.ime = false;
+    gb.scheduled_ei = false;
 }
 
 /// Take the bitwise OR of the contents of the 8-bit immediate operand `d8` and
@@ -874,8 +892,12 @@ fn ld_a_da16(gb: *gameboy.State) void {
     gb.registers.named8.a = cycleRead(gb, addr);
 }
 
+/// Set the interrupt master enable flag and enable maskable interrupts. This
+/// instruction can be used in an interrupt routine to enable higher-order interrupts.
+///
+/// The flag is only set *after* the instruction following EI.
 fn ei(gb: *gameboy.State) void {
-    _ = gb;
+    gb.scheduled_ei = true;
 }
 
 /// Compare the contents of register `A` and the contents of the 8-bit immediate
@@ -1053,6 +1075,10 @@ fn getSrc(comptime T: type, gb: *gameboy.State, r: *const T) u8 {
 
 test "exec nop" {
     // TODO: fill memory state and check state after exec
-    var gb = gameboy.State{ .registers = .{ .arr16 = [_]u16{0} ** 6 } };
+    var gb = gameboy.State{
+        .ime = false,
+        .scheduled_ei = false,
+        .registers = .{ .arr16 = [_]u16{0} ** 6 },
+    };
     exec(&gb);
 }

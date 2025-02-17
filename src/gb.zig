@@ -6,6 +6,11 @@ pub const Addr = u16;
 
 /// The main state of the gameboy emulator.
 pub const State = struct {
+    /// Whether interrupts are enabled.
+    ime: bool,
+    /// The ei instruction has a delayed effect that will enable interrupts
+    /// after one machine cycle.
+    scheduled_ei: bool,
     registers: RegisterFile,
 
     pub fn tick(self: *@This()) void {
@@ -45,15 +50,15 @@ const RegisterFile = extern union {
 /// Contains information about the result of the most recent
 /// instruction that has affected flags.
 const Flags = packed struct(u8) {
-    /// Zero flag.
-    z: bool,
-    /// Subtraction flag (BCD).
-    n: bool,
-    /// Half Carry flag (BCD).
-    h: bool,
+    _: u4,
     /// Carry flag.
     c: bool,
-    _: u4,
+    /// Half Carry flag (BCD).
+    h: bool,
+    /// Subtraction flag (BCD).
+    n: bool,
+    /// Zero flag.
+    z: bool,
 };
 
 test "RegisterFile get" {
