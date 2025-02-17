@@ -151,73 +151,17 @@ pub fn exec(gb: *gameboy.State) void {
         0x7e => ld_r_dhl(gb, &gb.registers.named8.a),
         0x7f => nop(),
 
-        0x80 => add_a_r(u8, gb, &gb.registers.named8.b),
-        0x81 => add_a_r(u8, gb, &gb.registers.named8.c),
-        0x82 => add_a_r(u8, gb, &gb.registers.named8.d),
-        0x83 => add_a_r(u8, gb, &gb.registers.named8.e),
-        0x84 => add_a_r(u8, gb, &gb.registers.named8.h),
-        0x85 => add_a_r(u8, gb, &gb.registers.named8.l),
-        0x86 => add_a_r(u16, gb, &gb.registers.named16.hl),
-        0x87 => add_a_r(u8, gb, &gb.registers.named8.a),
-        0x88 => adc_a_r(u8, gb, &gb.registers.named8.b),
-        0x89 => adc_a_r(u8, gb, &gb.registers.named8.c),
-        0x8a => adc_a_r(u8, gb, &gb.registers.named8.d),
-        0x8b => adc_a_r(u8, gb, &gb.registers.named8.e),
-        0x8c => adc_a_r(u8, gb, &gb.registers.named8.h),
-        0x8d => adc_a_r(u8, gb, &gb.registers.named8.l),
-        0x8e => adc_a_r(u16, gb, &gb.registers.named16.hl),
-        0x8f => adc_a_r(u8, gb, &gb.registers.named8.a),
+        inline 0x80...0x87 => |op| add_a_r(gb, op),
+        inline 0x88...0x8f => |op| adc_a_r(gb, op),
 
-        0x90 => sub_a_r(u8, gb, &gb.registers.named8.b),
-        0x91 => sub_a_r(u8, gb, &gb.registers.named8.c),
-        0x92 => sub_a_r(u8, gb, &gb.registers.named8.d),
-        0x93 => sub_a_r(u8, gb, &gb.registers.named8.e),
-        0x94 => sub_a_r(u8, gb, &gb.registers.named8.h),
-        0x95 => sub_a_r(u8, gb, &gb.registers.named8.l),
-        0x96 => sub_a_r(u16, gb, &gb.registers.named16.hl),
-        0x97 => sub_a_r(u8, gb, &gb.registers.named8.a),
-        0x98 => sbc_a_r(u8, gb, &gb.registers.named8.b),
-        0x99 => sbc_a_r(u8, gb, &gb.registers.named8.c),
-        0x9a => sbc_a_r(u8, gb, &gb.registers.named8.d),
-        0x9b => sbc_a_r(u8, gb, &gb.registers.named8.e),
-        0x9c => sbc_a_r(u8, gb, &gb.registers.named8.h),
-        0x9d => sbc_a_r(u8, gb, &gb.registers.named8.l),
-        0x9e => sbc_a_r(u16, gb, &gb.registers.named16.hl),
-        0x9f => sbc_a_r(u8, gb, &gb.registers.named8.a),
+        inline 0x90...0x97 => |op| sub_a_r(gb, op),
+        inline 0x98...0x9f => |op| sbc_a_r(gb, op),
 
-        0xa0 => and_a_r(u8, gb, &gb.registers.named8.b),
-        0xa1 => and_a_r(u8, gb, &gb.registers.named8.c),
-        0xa2 => and_a_r(u8, gb, &gb.registers.named8.d),
-        0xa3 => and_a_r(u8, gb, &gb.registers.named8.e),
-        0xa4 => and_a_r(u8, gb, &gb.registers.named8.h),
-        0xa5 => and_a_r(u8, gb, &gb.registers.named8.l),
-        0xa6 => and_a_r(u16, gb, &gb.registers.named16.hl),
-        0xa7 => and_a_r(u8, gb, &gb.registers.named8.a),
-        0xa8 => xor_a_r(u8, gb, &gb.registers.named8.b),
-        0xa9 => xor_a_r(u8, gb, &gb.registers.named8.c),
-        0xaa => xor_a_r(u8, gb, &gb.registers.named8.d),
-        0xab => xor_a_r(u8, gb, &gb.registers.named8.e),
-        0xac => xor_a_r(u8, gb, &gb.registers.named8.h),
-        0xad => xor_a_r(u8, gb, &gb.registers.named8.l),
-        0xae => xor_a_r(u16, gb, &gb.registers.named16.hl),
-        0xaf => xor_a_r(u8, gb, &gb.registers.named8.a),
+        inline 0xa0...0xa7 => |op| and_a_r(gb, op),
+        inline 0xa8...0xaf => |op| xor_a_r(gb, op),
 
-        0xb0 => or_a_r(u8, gb, &gb.registers.named8.b),
-        0xb1 => or_a_r(u8, gb, &gb.registers.named8.c),
-        0xb2 => or_a_r(u8, gb, &gb.registers.named8.d),
-        0xb3 => or_a_r(u8, gb, &gb.registers.named8.e),
-        0xb4 => or_a_r(u8, gb, &gb.registers.named8.h),
-        0xb5 => or_a_r(u8, gb, &gb.registers.named8.l),
-        0xb6 => or_a_r(u16, gb, &gb.registers.named16.hl),
-        0xb7 => or_a_r(u8, gb, &gb.registers.named8.a),
-        0xb8 => cp_a_r(u8, gb, &gb.registers.named8.b),
-        0xb9 => cp_a_r(u8, gb, &gb.registers.named8.c),
-        0xba => cp_a_r(u8, gb, &gb.registers.named8.d),
-        0xbb => cp_a_r(u8, gb, &gb.registers.named8.e),
-        0xbc => cp_a_r(u8, gb, &gb.registers.named8.h),
-        0xbd => cp_a_r(u8, gb, &gb.registers.named8.l),
-        0xbe => cp_a_r(u16, gb, &gb.registers.named16.hl),
-        0xbf => cp_a_r(u8, gb, &gb.registers.named8.a),
+        inline 0xb0...0xb7 => |op| or_a_r(gb, op),
+        inline 0xb8...0xbf => |op| cp_a_r(gb, op),
 
         0xc0 => ret_cc(gb, !gb.registers.named8.f.z),
         0xc1 => pop_rr(gb, &gb.registers.named16.bc),
@@ -230,7 +174,7 @@ pub fn exec(gb: *gameboy.State) void {
         0xc8 => ret_cc(gb, gb.registers.named8.f.z),
         0xc9 => ret(gb),
         0xca => jp_cc_a16(gb, gb.registers.named8.f.z),
-        0xcb => illegal(),
+        0xcb => cb_prefix(gb),
         0xcc => call_cc_a16(gb, gb.registers.named8.f.z),
         0xcd => call_a16(gb),
         0xce => adc_a_d8(gb),
@@ -582,58 +526,58 @@ fn halt(gb: *gameboy.State) void {
 
 /// Add the contents of register `r` or the memory pointed to by `r` to the
 /// contents of register `A` and store the results in register `A`.
-fn add_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
-    const src = getSrc(T, gb, r);
+fn add_a_r(gb: *gameboy.State, op_code: comptime_int) void {
+    const src = getSrc(gb, op_code);
     add_a_x(gb, src);
 }
 
 /// Add the contents of register `r` or the memory pointed to by `r` and the
 /// carry flag to the contents of register `A` and store the results in `A`.
-fn adc_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
-    const src = getSrc(T, gb, r);
+fn adc_a_r(gb: *gameboy.State, op_code: comptime_int) void {
+    const src = getSrc(gb, op_code);
     adc_a_x(gb, src);
 }
 
 /// Subtract the contents of register `r` or the memory pointed to by `r` from the
 /// contents of register `A` and store the results in register `A`.
-fn sub_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
-    const src = getSrc(T, gb, r);
+fn sub_a_r(gb: *gameboy.State, op_code: comptime_int) void {
+    const src = getSrc(gb, op_code);
     sub_a_x(gb, src);
 }
 
 /// Subtract the contents of register `r` or the memory pointed to by `r` and the
 /// carry flag from the contents of register `A`, and store the results in `A`.
-fn sbc_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
-    const src = getSrc(T, gb, r);
+fn sbc_a_r(gb: *gameboy.State, op_code: comptime_int) void {
+    const src = getSrc(gb, op_code);
     sbc_a_x(gb, src);
 }
 
 /// Take the bitwise AND of register `r` or the memory pointed to by `r` and
 /// register `A`, and store the results in `A`.
-fn and_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
-    const src = getSrc(T, gb, r);
+fn and_a_r(gb: *gameboy.State, op_code: comptime_int) void {
+    const src = getSrc(gb, op_code);
     and_a_x(gb, src);
 }
 
 /// Take the bitwise XOR of register `r` or the memory pointed to by `r` and
 /// register `A`, and store the results in `A`.
-fn xor_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
-    const src = getSrc(T, gb, r);
+fn xor_a_r(gb: *gameboy.State, op_code: comptime_int) void {
+    const src = getSrc(gb, op_code);
     xor_a_x(gb, src);
 }
 
 /// Take the bitwise OR of register `r` or the memory pointed to by `r` and
 /// register `A`, and store the results in `A`.
-fn or_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
-    const src = getSrc(T, gb, r);
+fn or_a_r(gb: *gameboy.State, op_code: comptime_int) void {
+    const src = getSrc(gb, op_code);
     or_a_x(gb, src);
 }
 
 /// Compare the contents of register `r` or the memory pointed to by `r` and
 /// the contents of register `A` by calculating `A - B`, and set the `Z` flag
 /// if they are equal.
-fn cp_a_r(comptime T: type, gb: *gameboy.State, r: *const T) void {
-    const src = getSrc(T, gb, r);
+fn cp_a_r(gb: *gameboy.State, op_code: comptime_int) void {
+    const src = getSrc(gb, op_code);
     cp_a_x(gb, src);
 }
 
@@ -907,6 +851,171 @@ fn cp_a_d8(gb: *gameboy.State) void {
     cp_a_x(gb, src);
 }
 
+/// 16-bit opcodes where the first 8 bits are 0xcb.
+fn cb_prefix(gb: *gameboy.State) void {
+    const op_code = fetch8(gb);
+    switch (op_code) {
+        inline 0x00...0x07 => |op| rlc_r(gb, op),
+        inline 0x08...0x0f => |op| rrc_r(gb, op),
+
+        inline 0x10...0x17 => |op| rl_r(gb, op),
+        inline 0x18...0x1f => |op| rr_r(gb, op),
+
+        inline 0x20...0x27 => |op| sla_r(gb, op),
+        inline 0x28...0x2f => |op| sra_r(gb, op),
+
+        inline 0x30...0x37 => |op| swap_r(gb, op),
+        inline 0x38...0x3f => |op| srl_r(gb, op),
+
+        inline 0x40...0x7f => |op| bit_x_r(gb, op),
+        inline 0x80...0xbf => |op| res_x_r(gb, op),
+        inline 0xc0...0xff => |op| set_x_r(gb, op),
+    }
+}
+
+/// Rotate the contents of register `r` to the left.
+fn rlc_r(gb: *gameboy.State, op_code: comptime_int) void {
+    const src = getSrc(gb, op_code);
+    const bit7 = (src & 0x80) != 0;
+
+    const value = (src << 1) | @intFromBool(bit7);
+    setDst(gb, op_code, value);
+
+    gb.registers.named8.f.z = value == 0;
+    gb.registers.named8.f.n = false;
+    gb.registers.named8.f.h = false;
+    gb.registers.named8.f.c = bit7;
+}
+
+/// Rotate the contents of register `r` to the right.
+fn rrc_r(gb: *gameboy.State, op_code: comptime_int) void {
+    const src = getSrc(gb, op_code);
+    const bit0 = (src & 0x01) != 0;
+
+    const value = @as(u8, @intFromBool(bit0)) << 7 | (src >> 1);
+    setDst(gb, op_code, value);
+
+    gb.registers.named8.f.z = value == 0;
+    gb.registers.named8.f.n = false;
+    gb.registers.named8.f.h = false;
+    gb.registers.named8.f.c = bit0;
+}
+
+/// Rotate the contents of register `r` to the left,
+/// through the carry flag.
+fn rl_r(gb: *gameboy.State, op_code: comptime_int) void {
+    const src = getSrc(gb, op_code);
+    const bit7 = (src & 0x80) != 0;
+
+    const value =
+        (gb.registers.named8.a << 1) | @intFromBool(gb.registers.named8.f.c);
+    setDst(gb, op_code, value);
+
+    gb.registers.named8.f.z = value == 0;
+    gb.registers.named8.f.n = false;
+    gb.registers.named8.f.h = false;
+    gb.registers.named8.f.c = bit7;
+}
+
+/// Rotate the contents of register `r` to the right,
+/// through the carry flag.
+fn rr_r(gb: *gameboy.State, op_code: comptime_int) void {
+    const src = getSrc(gb, op_code);
+    const bit0 = (src & 0x01) != 0;
+
+    const value =
+        @as(u8, @intFromBool(gb.registers.named8.f.c)) << 7 | (src >> 1);
+    setDst(gb, op_code, value);
+
+    gb.registers.named8.f.z = value == 0;
+    gb.registers.named8.f.n = false;
+    gb.registers.named8.f.h = false;
+    gb.registers.named8.f.c = bit0;
+}
+
+/// Shift the contents of register `r` to the left.
+fn sla_r(gb: *gameboy.State, op_code: comptime_int) void {
+    const src = getSrc(gb, op_code);
+    const bit7 = (src & 0x80) != 0;
+
+    const value = src << 1;
+    setDst(gb, op_code, value);
+
+    gb.registers.named8.f.z = value == 0;
+    gb.registers.named8.f.n = false;
+    gb.registers.named8.f.h = false;
+    gb.registers.named8.f.c = bit7;
+}
+
+/// Shift the contents of register `r` to the right, preserving bit 7.
+fn sra_r(gb: *gameboy.State, op_code: comptime_int) void {
+    const src = getSrc(gb, op_code);
+    const bit7 = src & 0x80;
+    const bit0 = (src & 0x01) != 0;
+
+    const value = bit7 | (src >> 1);
+    setDst(gb, op_code, value);
+
+    gb.registers.named8.f.z = value == 0;
+    gb.registers.named8.f.n = false;
+    gb.registers.named8.f.h = false;
+    gb.registers.named8.f.c = bit0;
+}
+
+/// Swap the lower and higher four bits of register `r`.
+fn swap_r(gb: *gameboy.State, op_code: comptime_int) void {
+    const src = getSrc(gb, op_code);
+    const value = src & 0x0f | src & 0xf0;
+    setDst(gb, op_code, value);
+
+    gb.registers.named8.f.z = value == 0;
+    gb.registers.named8.f.n = false;
+    gb.registers.named8.f.h = false;
+    gb.registers.named8.f.c = false;
+}
+
+/// Shift the contents of register `B` to the right, resetting bit 7.
+fn srl_r(gb: *gameboy.State, op_code: comptime_int) void {
+    const src = getSrc(gb, op_code);
+    const bit0 = (src & 0x01) != 0;
+
+    const value = src >> 1;
+    setDst(gb, op_code, value);
+
+    gb.registers.named8.f.z = value == 0;
+    gb.registers.named8.f.n = false;
+    gb.registers.named8.f.h = false;
+    gb.registers.named8.f.c = bit0;
+}
+
+/// Copy the complement of the contents of bit `x` in register `r` to the `Z` flag of
+/// the program status word.
+fn bit_x_r(gb: *gameboy.State, op_code: comptime_int) void {
+    const src = getSrc(gb, op_code);
+    const x = @as(u3, @truncate(op_code >> 3));
+    const bx = src & (1 << x) != 0;
+
+    gb.registers.named8.f.z = !bx;
+    gb.registers.named8.f.n = false;
+    gb.registers.named8.f.h = true;
+}
+
+/// Reset bit `x` in register `r` to 0.
+fn res_x_r(gb: *gameboy.State, op_code: comptime_int) void {
+    const src = getSrc(gb, op_code);
+    const x = @as(u3, @truncate(op_code >> 3));
+
+    setDst(gb, op_code, src & ~(@as(u8, 1 << x)));
+}
+
+/// Set bit `x` in register `r` to 1.
+fn set_x_r(gb: *gameboy.State, op_code: comptime_int) void {
+    const src = getSrc(gb, op_code);
+    const x = @as(u3, @truncate(op_code >> 3));
+
+    setDst(gb, op_code, src | (1 << x));
+}
+
 fn illegal() void {
     // TODO: handle
 }
@@ -1063,14 +1172,36 @@ fn subManyWithOverflow(comptime T: type, n: comptime_int, args: [n]T) struct { T
     return .{ result, overflowed };
 }
 
-/// Either reads from `r` if it is an 8-bit register or reads from
-/// the memory pointed to by `r` if it is a 16-bit register.
-fn getSrc(comptime T: type, gb: *gameboy.State, r: *const T) u8 {
-    return switch (T) {
-        u8 => r.*,
-        u16 => cycleRead(gb, r.*),
-        else => @compileError("unsupported type"),
+/// Either reads from the register `r` if it is an 8-bit register or
+/// reads from the memory pointed to by `rr` if it is a 16-bit register,
+/// deciding based on the `op_code`.
+fn getSrc(gb: *gameboy.State, op_code: comptime_int) u8 {
+    return switch (@as(u3, @truncate(op_code))) {
+        0 => gb.registers.named8.b,
+        1 => gb.registers.named8.c,
+        2 => gb.registers.named8.d,
+        3 => gb.registers.named8.e,
+        4 => gb.registers.named8.h,
+        5 => gb.registers.named8.l,
+        6 => cycleRead(gb, gb.registers.named16.hl),
+        7 => gb.registers.named8.a,
     };
+}
+
+/// Either writes to the register `r` if it is an 8-bit register or
+/// writes to the memory pointed to by `rr` if it is a 16-bit register,
+/// deciding based on the `op_code`.
+fn setDst(gb: *gameboy.State, op_code: comptime_int, value: u8) void {
+    switch (@as(u3, @truncate(op_code))) {
+        0 => gb.registers.named8.b = value,
+        1 => gb.registers.named8.c = value,
+        2 => gb.registers.named8.d = value,
+        3 => gb.registers.named8.e = value,
+        4 => gb.registers.named8.h = value,
+        5 => gb.registers.named8.l = value,
+        6 => cycleWrite(gb, gb.registers.named16.hl, value),
+        7 => gb.registers.named8.a = value,
+    }
 }
 
 test "exec nop" {
@@ -1078,7 +1209,7 @@ test "exec nop" {
     var gb = gameboy.State{
         .ime = false,
         .scheduled_ei = false,
-        .registers = .{ .arr16 = [_]u16{0} ** 6 },
+        .registers = .{ .named16 = .{ .af = 0, .bc = 0, .de = 0, .hl = 0, .sp = 0, .pc = 0 } },
     };
     exec(&gb);
 }

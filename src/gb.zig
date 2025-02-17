@@ -21,8 +21,6 @@ pub const State = struct {
 /// Most registers can be accessed as one 16-bit register
 /// or as two separate 8-bit registers so we use a C style union.
 const RegisterFile = extern union {
-    arr16: [6]u16,
-    arr8: [8]u8,
     named16: extern struct {
         af: u16,
         bc: u16,
@@ -62,24 +60,18 @@ const Flags = packed struct(u8) {
 };
 
 test "RegisterFile get" {
-    const registers = RegisterFile{ .arr16 = [6]u16{ 0x1234, 0, 0, 0xbeef, 0, 0 } };
+    const registers = RegisterFile{ .named16 = .{ .af = 0x1234, .bc = 0, .de = 0, .hl = 0xbeef, .sp = 0, .pc = 0 } };
 
-    try testing.expectEqual(0x1234, registers.named16.af);
-    try testing.expectEqual(0xbeef, registers.named16.hl);
     try testing.expectEqual(0x12, registers.named8.a);
     try testing.expectEqual(0xef, registers.named8.l);
 }
 
 test "RegisterFile set" {
-    var registers = RegisterFile{ .arr16 = [6]u16{ 0, 0, 0xfeed, 0, 0, 0 } };
-
-    try testing.expectEqual(0xfeed, registers.named16.de);
-    registers.named16.de = 0xdeef;
-    try testing.expectEqual(0xdeef, registers.named16.de);
+    var registers = RegisterFile{ .named16 = .{ .af = 0, .bc = 0, .de = 0xfeed, .hl = 0, .sp = 0, .pc = 0 } };
 
     registers.named8.d = 0xaa;
     try testing.expectEqual(0xaa, registers.named8.d);
-    try testing.expectEqual(0xaaef, registers.named16.de);
+    try testing.expectEqual(0xaaed, registers.named16.de);
 
     registers.named8.e = 0xbb;
     try testing.expectEqual(0xaabb, registers.named16.de);
