@@ -51,7 +51,7 @@ pub fn exec(gb: *gameboy.State) void {
 
         0x20 => jr_cc_s8(gb, !gb.registers.named8.f.z),
         0x21 => ld_rr_d16(gb, &gb.registers.named16.hl),
-        0x22 => ld_dhl_inc_a(gb),
+        0x22 => ld_dhli_a(gb),
         0x23 => inc_rr(gb, &gb.registers.named16.hl),
         0x24 => inc_r(gb, &gb.registers.named8.h),
         0x25 => dec_r(gb, &gb.registers.named8.h),
@@ -59,7 +59,7 @@ pub fn exec(gb: *gameboy.State) void {
         0x27 => daa(gb),
         0x28 => jr_cc_s8(gb, gb.registers.named8.f.z),
         0x29 => add_hl_rr(gb, &gb.registers.named16.hl),
-        0x2a => ld_a_dhl_inc(gb),
+        0x2a => ld_a_dhli(gb),
         0x2b => dec_rr(gb, &gb.registers.named16.hl),
         0x2c => inc_r(gb, &gb.registers.named8.l),
         0x2d => dec_r(gb, &gb.registers.named8.l),
@@ -68,7 +68,7 @@ pub fn exec(gb: *gameboy.State) void {
 
         0x30 => jr_cc_s8(gb, !gb.registers.named8.f.c),
         0x31 => ld_rr_d16(gb, &gb.registers.named16.sp),
-        0x32 => ld_dhl_dec_a(gb),
+        0x32 => ld_dhld_a(gb),
         0x33 => inc_rr(gb, &gb.registers.named16.sp),
         0x34 => inc_dhl(gb),
         0x35 => dec_dhl(gb),
@@ -76,7 +76,7 @@ pub fn exec(gb: *gameboy.State) void {
         0x37 => scf(gb),
         0x38 => jr_cc_s8(gb, gb.registers.named8.f.c),
         0x39 => add_hl_rr(gb, &gb.registers.named16.sp),
-        0x3a => ld_a_dhl_dec(gb),
+        0x3a => ld_a_dhld(gb),
         0x3b => dec_rr(gb, &gb.registers.named16.sp),
         0x3c => inc_r(gb, &gb.registers.named8.a),
         0x3d => dec_r(gb, &gb.registers.named8.a),
@@ -445,7 +445,7 @@ fn jr_cc_s8(gb: *gameboy.State, condition: bool) void {
 
 /// Store the contents of register `A` into the memory location specified
 /// by register pair `HL` and simultaneously increment `HL`.
-fn ld_dhl_inc_a(gb: *gameboy.State) void {
+fn ld_dhli_a(gb: *gameboy.State) void {
     ld_dhl_r(gb, &gb.registers.named8.a);
     gb.registers.named16.hl +%= 1;
 }
@@ -487,7 +487,7 @@ fn daa(gb: *gameboy.State) void {
 
 /// Load the contents of memory specified by register pair `HL` into
 /// register `A` and simultaneously increment the contents of `HL`.
-fn ld_a_dhl_inc(gb: *gameboy.State) void {
+fn ld_a_dhli(gb: *gameboy.State) void {
     ld_r_dhl(gb, &gb.registers.named8.a);
     gb.registers.named16.hl +%= 1;
 }
@@ -502,7 +502,7 @@ fn cpl(gb: *gameboy.State) void {
 
 /// Store the contents of register `A` into the memmory location specified
 /// by the register pair `HL` and simultaneously decrement `HL`.
-fn ld_dhl_dec_a(gb: *gameboy.State) void {
+fn ld_dhld_a(gb: *gameboy.State) void {
     ld_dhl_r(gb, &gb.registers.named8.a);
     gb.registers.named16.hl -%= 1;
 }
@@ -543,7 +543,7 @@ fn scf(gb: *gameboy.State) void {
 
 /// Load the contents of memory specified by register pair `HL` into register `A`
 /// and simultaneously decrement `HL`.
-fn ld_a_dhl_dec(gb: *gameboy.State) void {
+fn ld_a_dhld(gb: *gameboy.State) void {
     ld_r_dhl(gb, &gb.registers.named8.a);
     gb.registers.named16.hl -%= 1;
 }
