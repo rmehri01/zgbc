@@ -2,16 +2,16 @@ const std = @import("std");
 const assert = std.debug.assert;
 const testing = std.testing;
 
-pub const Addr = u16;
-
 /// The main state of the gameboy emulator.
 pub const State = struct {
-    /// Whether interrupts are enabled.
+    /// Interrupt Master Enable, enables the jump to the interrupt vectors,
+    /// not whether interrupts are enabled or disabled.
     ime: bool,
-    /// The ei instruction has a delayed effect that will enable interrupts
-    /// after one machine cycle.
+    /// The ei instruction has a delayed effect that will enable interrupt
+    /// handling after one machine cycle.
     scheduled_ei: bool,
     registers: RegisterFile,
+    bus: MemoryBus,
 
     pub fn tick(self: *@This()) void {
         _ = self; // autofix
@@ -45,10 +45,10 @@ const RegisterFile = extern union {
     }
 };
 
-/// Contains information about the result of the most recent
+/// Contains information about the result of the most recent CPU
 /// instruction that has affected flags.
 const Flags = packed struct(u8) {
-    _: u4,
+    _: u4 = 0,
     /// Carry flag.
     c: bool,
     /// Half Carry flag (BCD).
@@ -58,6 +58,12 @@ const Flags = packed struct(u8) {
     /// Zero flag.
     z: bool,
 };
+
+/// 16-bit address to index ROM, RAM, and I/O.
+pub const Addr = u16;
+
+/// The main type used to interact with the system's memory.
+const MemoryBus = struct { memory: [0xffff]u8 };
 
 test "RegisterFile get" {
     const registers = RegisterFile{ .named16 = .{ .af = 0x1234, .bc = 0, .de = 0, .hl = 0xbeef, .sp = 0, .pc = 0 } };

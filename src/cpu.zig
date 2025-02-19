@@ -2,11 +2,12 @@ const std = @import("std");
 const testing = std.testing;
 
 const gameboy = @import("gb.zig");
+const memory = @import("memory.zig");
 
 /// Executes a single CPU instruction.
-pub fn exec(gb: *gameboy.State) void {
+pub fn execute(gb: *gameboy.State) void {
     // If the scheduled `ei` instruction wasn't cancelled, then enable
-    // interrupts after the next instruction runs.
+    // interrupt handling after the next instruction runs.
     const scheduled_ei = gb.scheduled_ei;
     defer if (scheduled_ei and gb.scheduled_ei) {
         @branchHint(.unlikely);
@@ -271,7 +272,7 @@ fn dec_r(gb: *gameboy.State, r: *u8) void {
     gb.registers.named8.f.h = r.* & 0x0f == 0xf;
 }
 
-/// Load the 8-bit immediate operand d8 into register `r`.
+/// Load the 8-bit immediate operand `d8` into register `r`.
 fn ld_r_d8(gb: *gameboy.State, r: *u8) void {
     r.* = fetch8(gb);
 }
@@ -1129,19 +1130,12 @@ fn fetch8(gb: *gameboy.State) u8 {
 
 fn cycleRead(gb: *gameboy.State, addr: gameboy.Addr) u8 {
     gb.tick();
-
-    // TODO: read from memory
-    _ = addr; // autofix
-
-    return 0;
+    return memory.readByte(gb, addr);
 }
 
 fn cycleWrite(gb: *gameboy.State, addr: gameboy.Addr, value: u8) void {
     gb.tick();
-
-    // TODO: write to memory
-    _ = addr; // autofix
-    _ = value; // autofix
+    memory.writeByte(gb, addr, value);
 }
 
 /// Like `@addWithOverflow` but for an arbitary number of arguments.
@@ -1206,10 +1200,6 @@ fn setDst(gb: *gameboy.State, op_code: comptime_int, value: u8) void {
 
 test "exec nop" {
     // TODO: fill memory state and check state after exec
-    var gb = gameboy.State{
-        .ime = false,
-        .scheduled_ei = false,
-        .registers = .{ .named16 = .{ .af = 0, .bc = 0, .de = 0, .hl = 0, .sp = 0, .pc = 0 } },
-    };
-    exec(&gb);
+    var gb = gameboy.State{ .ime = false, .scheduled_ei = false, .registers = .{ .named16 = .{ .af = 0, .bc = 0, .de = 0, .hl = 0, .sp = 0, .pc = 0 } }, .bus = .{ .memory = [_]u8{0} ** 0xffff } };
+    execute(&gb);
 }
