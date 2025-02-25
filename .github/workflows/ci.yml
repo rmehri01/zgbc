@@ -5,9 +5,9 @@ on:
     branches: ["main"]
 
 jobs:
-  lint:
+  lint-zig:
     runs-on: ubuntu-latest
-    name: Lint
+    name: Lint Zig
     steps:
       - uses: actions/checkout@v3
       - uses: mlugg/setup-zig@v1
@@ -15,12 +15,31 @@ jobs:
           version: master
       - run: zig fmt --check .
 
-  test:
+  test-zig:
     runs-on: ubuntu-latest
-    name: Build and Test
+    name: Build and Test Zig
     steps:
       - uses: actions/checkout@v3
       - uses: mlugg/setup-zig@v1
         with:
           version: master
       - run: zig build test
+
+  lint-web:
+    runs-on: ubuntu-latest
+    name: Lint and Format Web
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        working-directory: web
+        run: bun install
+  
+      - name: Lint
+        working-directory: web
+        run: bun run lint
+      - name: Format
+        working-directory: web
+        run: bun run format
