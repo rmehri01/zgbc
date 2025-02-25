@@ -2,6 +2,8 @@ const std = @import("std");
 const assert = std.debug.assert;
 const testing = std.testing;
 
+const dmg_boot_rom = @embedFile("boot/dmg.bin");
+
 /// The main state of the gameboy emulator.
 pub const State = struct {
     /// Interrupt Master Enable, enables the jump to the interrupt vectors,
@@ -10,11 +12,28 @@ pub const State = struct {
     /// The ei instruction has a delayed effect that will enable interrupt
     /// handling after one machine cycle.
     scheduled_ei: bool,
+    /// State of the registers in the gameboy.
     registers: RegisterFile,
+    /// The boot ROM to use when starting up.
+    boot_rom: []const u8,
     bus: MemoryBus,
 
     pub fn tick(self: *@This()) void {
         _ = self; // autofix
+    }
+
+    pub fn init(allocator: std.mem.Allocator) !@This() {
+        return @This(){
+            .ime = true,
+            .scheduled_ei = false,
+            .registers = .{ .named16 = .{ .af = 0, .bc = 0, .de = 0, .hl = 0, .sp = 0, .pc = 0 } },
+            .boot_rom = dmg_boot_rom,
+            .bus = .{ .memory = try allocator.create([0xffff]u8) },
+        };
+    }
+
+    pub fn free(self: *@This(), allocator: std.mem.Allocator) void {
+        allocator.destroy(self.bus.memory);
     }
 };
 
@@ -63,7 +82,7 @@ const Flags = packed struct(u8) {
 pub const Addr = u16;
 
 /// The main type used to interact with the system's memory.
-const MemoryBus = struct { memory: [0xffff]u8 };
+const MemoryBus = struct { memory: *[0xffff]u8 };
 
 test "RegisterFile get" {
     const registers = RegisterFile{ .named16 = .{ .af = 0x1234, .bc = 0, .de = 0, .hl = 0xbeef, .sp = 0, .pc = 0 } };

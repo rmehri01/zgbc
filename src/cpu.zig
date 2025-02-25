@@ -399,30 +399,29 @@ fn ld_dhli_a(gb: *gameboy.State) void {
 /// addition and subtraction operations.
 fn daa(gb: *gameboy.State) void {
     const value, const overflowed =
-        if (gb.registers.named8.f.n)
-    result: {
-        var adjustment: u8 = 0;
+        if (gb.registers.named8.f.n) result: {
+            var adjustment: u8 = 0;
 
-        if (gb.registers.named8.f.h) {
-            adjustment += 0x06;
-        }
-        if (gb.registers.named8.f.c) {
-            adjustment += 0x60;
-        }
+            if (gb.registers.named8.f.h) {
+                adjustment += 0x06;
+            }
+            if (gb.registers.named8.f.c) {
+                adjustment += 0x60;
+            }
 
-        break :result @subWithOverflow(gb.registers.named8.a, adjustment);
-    } else result: {
-        var adjustment: u8 = 0;
+            break :result @subWithOverflow(gb.registers.named8.a, adjustment);
+        } else result: {
+            var adjustment: u8 = 0;
 
-        if (gb.registers.named8.f.h or (gb.registers.named8.a & 0x0f) > 0x09) {
-            adjustment += 0x06;
-        }
-        if (gb.registers.named8.f.c or (gb.registers.named8.a & 0x0f) > 0x99) {
-            adjustment += 0x60;
-        }
+            if (gb.registers.named8.f.h or (gb.registers.named8.a & 0x0f) > 0x09) {
+                adjustment += 0x06;
+            }
+            if (gb.registers.named8.f.c or (gb.registers.named8.a & 0x0f) > 0x99) {
+                adjustment += 0x60;
+            }
 
-        break :result @addWithOverflow(gb.registers.named8.a, adjustment);
-    };
+            break :result @addWithOverflow(gb.registers.named8.a, adjustment);
+        };
 
     gb.registers.named8.a = value;
     gb.registers.named8.f.z = value == 0;
@@ -1200,6 +1199,8 @@ fn setDst(gb: *gameboy.State, op_code: comptime_int, value: u8) void {
 
 test "exec nop" {
     // TODO: fill memory state and check state after exec
-    var gb = gameboy.State{ .ime = false, .scheduled_ei = false, .registers = .{ .named16 = .{ .af = 0, .bc = 0, .de = 0, .hl = 0, .sp = 0, .pc = 0 } }, .bus = .{ .memory = [_]u8{0} ** 0xffff } };
+    var gb = try gameboy.State.init(testing.allocator);
+    defer gb.free(testing.allocator);
+
     execute(&gb);
 }

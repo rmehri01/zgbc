@@ -92,6 +92,8 @@ pub fn writeByte(gb: *gameboy.State, addr: gameboy.Addr, value: u8) void {
 
 test "read byte" {
     // TODO: fill memory state and check state after read
-    var gb = gameboy.State{ .ime = false, .scheduled_ei = false, .registers = .{ .named16 = .{ .af = 0, .bc = 0, .de = 0, .hl = 0, .sp = 0, .pc = 0 } }, .bus = .{ .memory = [_]u8{0} ** 0xffff } };
+    var gb = try gameboy.State.init(testing.allocator);
+    defer gb.free(testing.allocator);
+
     _ = readByte(&gb, 0);
 }
