@@ -32,7 +32,7 @@ pub const State = struct {
         };
     }
 
-    pub fn free(self: *@This(), allocator: std.mem.Allocator) void {
+    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
         allocator.destroy(self.bus.memory);
     }
 };

@@ -1,22 +1,18 @@
 import { useEffect, useRef } from "react";
+import { SCREEN_HEIGHT, SCREEN_WIDTH, Zgbc } from "./wasm";
 
-export default function Display() {
+export default function Display({ zgbc }: { zgbc: Zgbc | null }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const draw = (ctx: CanvasRenderingContext2D, frameCount: number) => {
-    ctx.fillStyle = "#000000";
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  const draw = (ctx: CanvasRenderingContext2D) => {
+    if (!zgbc) return;
 
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.arc(
-      ctx.canvas.width / 2,
-      ctx.canvas.height / 2,
-      50 * Math.sin(frameCount * 0.015) ** 2,
-      0,
-      2 * Math.PI,
+    const imageData = new ImageData(
+      zgbc.pixels(),
+      ctx.canvas.width,
+      ctx.canvas.height,
     );
-    ctx.fill();
+    ctx.putImageData(imageData, 0, 0);
   };
 
   useEffect(() => {
@@ -28,12 +24,10 @@ export default function Display() {
 
     context.imageSmoothingEnabled = false;
 
-    let frameCount = 0;
     let animationFrameId: number;
 
     const renderFrame = () => {
-      frameCount++;
-      draw(context, frameCount);
+      draw(context);
       animationFrameId = window.requestAnimationFrame(renderFrame);
     };
 
@@ -44,5 +38,5 @@ export default function Display() {
     };
   });
 
-  return <canvas ref={canvasRef} width={160} height={144} />;
+  return <canvas ref={canvasRef} width={SCREEN_WIDTH} height={SCREEN_HEIGHT} />;
 }
