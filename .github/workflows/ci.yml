@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Lint Zig
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v1
         with:
           version: master
@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Build and Test Zig
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v1
         with:
           version: master
@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Lint and Format Web
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
