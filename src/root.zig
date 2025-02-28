@@ -11,6 +11,10 @@ export fn init() ?*gameboy.State {
     return gb;
 }
 
+export fn execute(gb: *gameboy.State) void {
+    cpu.execute(gb);
+}
+
 const Pixel = packed struct {
     r: u8,
     g: u8,

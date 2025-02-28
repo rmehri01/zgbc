@@ -21,9 +21,8 @@ pub fn readByte(gb: *gameboy.State, addr: gameboy.Addr) u8 {
 }
 
 fn read_rom(gb: *gameboy.State, addr: gameboy.Addr) u8 {
-    _ = gb; // autofix
-    _ = addr; // autofix
-    return 0;
+    // TODO: track if rom is finished
+    return gb.boot_rom[addr];
 }
 
 fn read_mbc_rom(gb: *gameboy.State, addr: gameboy.Addr) u8 {
@@ -45,9 +44,8 @@ fn read_mbc_ram(gb: *gameboy.State, addr: gameboy.Addr) u8 {
 }
 
 fn read_ram(gb: *gameboy.State, addr: gameboy.Addr) u8 {
-    _ = gb; // autofix
-    _ = addr; // autofix
-    return 0;
+    // TODO: pretty naive
+    return gb.bus.memory[addr];
 }
 
 fn read_banked_ram(gb: *gameboy.State, addr: gameboy.Addr) u8 {

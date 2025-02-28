@@ -24,7 +24,7 @@ pub const State = struct {
 
     pub fn init(allocator: std.mem.Allocator) !@This() {
         return @This(){
-            .ime = true,
+            .ime = false,
             .scheduled_ei = false,
             .registers = .{ .named16 = .{ .af = 0, .bc = 0, .de = 0, .hl = 0, .sp = 0, .pc = 0 } },
             .boot_rom = dmg_boot_rom,
@@ -61,6 +61,41 @@ const RegisterFile = extern union {
 
     comptime {
         assert(@sizeOf(@This()) == 6 * @sizeOf(u16));
+    }
+
+    pub fn jsonStringify(
+        self: @This(),
+        writer: anytype,
+    ) !void {
+        try writer.beginObject();
+
+        {
+            try writer.objectField("named8");
+            try writer.beginObject();
+
+            const named8 = @typeInfo(RegisterFile).@"union".fields[1].type;
+            inline for (@typeInfo(named8).@"struct".fields) |field| {
+                try writer.objectField(field.name);
+                try writer.write(@field(self.named8, field.name));
+            }
+
+            try writer.endObject();
+        }
+
+        {
+            try writer.objectField("named16");
+            try writer.beginObject();
+
+            const named16 = @typeInfo(RegisterFile).@"union".fields[0].type;
+            inline for (@typeInfo(named16).@"struct".fields) |field| {
+                try writer.objectField(field.name);
+                try writer.write(@field(self.named16, field.name));
+            }
+
+            try writer.endObject();
+        }
+
+        try writer.endObject();
     }
 };
 

@@ -39,6 +39,7 @@ export default tseslint.config(
         "warn",
         { allowConstantExport: true },
       ],
+      "prefer-const": ["error", { ignoreReadBeforeAssign: true }],
     },
   },
 );
