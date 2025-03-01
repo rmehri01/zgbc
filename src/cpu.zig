@@ -296,7 +296,7 @@ fn ld_da16_sp(gb: *gameboy.State) void {
     const addr: gameboy.Addr = fetch16(gb);
 
     cycleWrite(gb, addr, @intCast(gb.registers.named16.sp & 0x00ff));
-    cycleWrite(gb, addr + 1, @intCast(gb.registers.named16.sp & 0xff00));
+    cycleWrite(gb, addr + 1, @intCast(gb.registers.named16.sp >> 8));
 }
 
 /// Add the contents of register pair `rr` to the contents of
@@ -640,7 +640,7 @@ fn push_rr(gb: *gameboy.State, rr: *const u16) void {
     gb.tick();
 
     gb.registers.named16.sp -%= 1;
-    cycleWrite(gb, gb.registers.named16.sp, @intCast(rr.* & 0xff00));
+    cycleWrite(gb, gb.registers.named16.sp, @intCast(rr.* >> 8));
     gb.registers.named16.sp -%= 1;
     cycleWrite(gb, gb.registers.named16.sp, @intCast(rr.* & 0x00ff));
 }
