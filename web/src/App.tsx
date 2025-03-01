@@ -9,7 +9,7 @@ function App() {
   return (
     <>
       <nav>
-        <LoadROMButton />
+        <LoadROMButton zgbc={zgbc} />
       </nav>
       <Display zgbc={zgbc} />
     </>

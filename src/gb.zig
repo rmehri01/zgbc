@@ -16,6 +16,8 @@ pub const State = struct {
     registers: RegisterFile,
     /// The boot ROM to use when starting up.
     boot_rom: []const u8,
+    /// The cartridge that is currently loaded.
+    rom: ?[]u8,
     bus: MemoryBus,
 
     pub fn tick(self: *@This()) void {
@@ -28,12 +30,16 @@ pub const State = struct {
             .scheduled_ei = false,
             .registers = .{ .named16 = .{ .af = 0, .bc = 0, .de = 0, .hl = 0, .sp = 0, .pc = 0 } },
             .boot_rom = dmg_boot_rom,
+            .rom = null,
             .bus = .{ .memory = try allocator.create([0xffff]u8) },
         };
     }
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
         allocator.destroy(self.bus.memory);
+        if (self.rom) |rom| {
+            allocator.free(rom);
+        }
     }
 };
 

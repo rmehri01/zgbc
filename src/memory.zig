@@ -32,9 +32,8 @@ fn read_mbc_rom(gb: *gameboy.State, addr: gameboy.Addr) u8 {
 }
 
 fn read_vram(gb: *gameboy.State, addr: gameboy.Addr) u8 {
-    _ = gb; // autofix
-    _ = addr; // autofix
-    return 0;
+    // TODO: pretty naive
+    return gb.bus.memory[addr];
 }
 
 fn read_mbc_ram(gb: *gameboy.State, addr: gameboy.Addr) u8 {

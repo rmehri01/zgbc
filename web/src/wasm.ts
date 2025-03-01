@@ -10,15 +10,18 @@ type GameboyPtr = number;
 interface ZgbcRaw {
   memory: WebAssembly.Memory;
 
+  allocUint8Array: (len: number) => GameboyPtr;
   init: () => GameboyPtr;
   pixels: (gb: GameboyPtr) => GameboyPtr;
   execute: (gb: GameboyPtr) => void;
+  loadROM: (gb: GameboyPtr, ptr: GameboyPtr, len: number) => void;
 }
 
 /** The main interface for interacting with zgbc.wasm. */
 export interface Zgbc {
   pixels: () => Uint8ClampedArray;
   execute: () => void;
+  loadROM: (rom: Uint8Array) => void;
 }
 
 function createZgbc(raw: ZgbcRaw): Zgbc {
@@ -34,6 +37,13 @@ function createZgbc(raw: ZgbcRaw): Zgbc {
       );
     },
     execute: () => raw.execute(gb),
+    loadROM: (rom) => {
+      const bufPtr = raw.allocUint8Array(rom.length);
+      const buf = new Uint8Array(raw.memory.buffer, bufPtr, rom.length);
+
+      buf.set(rom);
+      raw.loadROM(gb, bufPtr, rom.length);
+    },
   };
 }
 
