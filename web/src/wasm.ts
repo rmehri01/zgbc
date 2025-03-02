@@ -13,14 +13,14 @@ interface ZgbcRaw {
   allocUint8Array: (len: number) => GameboyPtr;
   init: () => GameboyPtr;
   pixels: (gb: GameboyPtr) => GameboyPtr;
-  execute: (gb: GameboyPtr) => void;
+  step: (gb: GameboyPtr) => void;
   loadROM: (gb: GameboyPtr, ptr: GameboyPtr, len: number) => void;
 }
 
 /** The main interface for interacting with zgbc.wasm. */
 export interface Zgbc {
   pixels: () => Uint8ClampedArray;
-  execute: () => void;
+  step: () => void;
   loadROM: (rom: Uint8Array) => void;
 }
 
@@ -36,7 +36,7 @@ function createZgbc(raw: ZgbcRaw): Zgbc {
         SCREEN_WIDTH * SCREEN_HEIGHT * 4,
       );
     },
-    execute: () => raw.execute(gb),
+    step: () => raw.step(gb),
     loadROM: (rom) => {
       const bufPtr = raw.allocUint8Array(rom.length);
       const buf = new Uint8Array(raw.memory.buffer, bufPtr, rom.length);

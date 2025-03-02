@@ -14,11 +14,19 @@ pub const State = struct {
     scheduled_ei: bool,
     /// State of the registers in the gameboy.
     registers: RegisterFile,
+
     /// The boot ROM to use when starting up.
     boot_rom: []const u8,
     /// The cartridge that is currently loaded.
     rom: ?[]u8,
-    bus: MemoryBus,
+    /// Video RAM.
+    vram: *[0x2000]u8,
+    /// Work RAM.
+    ram: *[0x2000]u8,
+    /// Object attribute memory.
+    oam: *[0xa0]u8,
+    /// High RAM.
+    hram: *[0x7f]u8,
 
     pub fn tick(self: *@This()) void {
         _ = self; // autofix
@@ -31,15 +39,22 @@ pub const State = struct {
             .registers = .{ .named16 = .{ .af = 0, .bc = 0, .de = 0, .hl = 0, .sp = 0, .pc = 0 } },
             .boot_rom = dmg_boot_rom,
             .rom = null,
-            .bus = .{ .memory = try allocator.create([0xffff]u8) },
+            .vram = try allocator.create([0x2000]u8),
+            .ram = try allocator.create([0x2000]u8),
+            .oam = try allocator.create([0xa0]u8),
+            .hram = try allocator.create([0x7f]u8),
         };
     }
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
-        allocator.destroy(self.bus.memory);
         if (self.rom) |rom| {
             allocator.free(rom);
         }
+
+        allocator.destroy(self.vram);
+        allocator.destroy(self.ram);
+        allocator.destroy(self.oam);
+        allocator.destroy(self.hram);
     }
 };
 
@@ -75,27 +90,13 @@ const RegisterFile = extern union {
     ) !void {
         try writer.beginObject();
 
-        {
-            try writer.objectField("named8");
+        inline for (@typeInfo(RegisterFile).@"union".fields) |unionField| {
+            try writer.objectField(unionField.name);
             try writer.beginObject();
 
-            const named8 = @typeInfo(RegisterFile).@"union".fields[1].type;
-            inline for (@typeInfo(named8).@"struct".fields) |field| {
+            inline for (@typeInfo(unionField.type).@"struct".fields) |field| {
                 try writer.objectField(field.name);
-                try writer.write(@field(self.named8, field.name));
-            }
-
-            try writer.endObject();
-        }
-
-        {
-            try writer.objectField("named16");
-            try writer.beginObject();
-
-            const named16 = @typeInfo(RegisterFile).@"union".fields[0].type;
-            inline for (@typeInfo(named16).@"struct".fields) |field| {
-                try writer.objectField(field.name);
-                try writer.write(@field(self.named16, field.name));
+                try writer.write(@field(@field(self, unionField.name), field.name));
             }
 
             try writer.endObject();
@@ -118,12 +119,6 @@ const Flags = packed struct(u8) {
     /// Zero flag.
     z: bool,
 };
-
-/// 16-bit address to index ROM, RAM, and I/O.
-pub const Addr = u16;
-
-/// The main type used to interact with the system's memory.
-const MemoryBus = struct { memory: *[0xffff]u8 };
 
 test "RegisterFile get" {
     const registers = RegisterFile{ .named16 = .{ .af = 0x1234, .bc = 0, .de = 0, .hl = 0xbeef, .sp = 0, .pc = 0 } };

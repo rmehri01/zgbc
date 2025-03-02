@@ -1,9 +1,10 @@
 const std = @import("std");
 const allocator = std.heap.wasm_allocator;
 
-const gameboy = @import("gb.zig");
 const cpu = @import("cpu.zig");
+const gameboy = @import("gb.zig");
 const memory = @import("memory.zig");
+const ppu = @import("ppu.zig");
 
 export fn allocUint8Array(len: u32) [*]const u8 {
     const slice = allocator.alloc(u8, len) catch
@@ -21,8 +22,16 @@ export fn loadROM(gb: *gameboy.State, ptr: [*]u8, len: u32) void {
     gb.rom = ptr[0..len];
 }
 
-export fn execute(gb: *gameboy.State) void {
-    cpu.execute(gb);
+export fn step(gb: *gameboy.State) void {
+    cpu.step(gb);
+    // TODO: this should be inside tick
+    ppu.step(gb);
+}
+
+export fn stepUntil(gb: *gameboy.State, pc: u16) void {
+    while (gb.registers.named16.pc != pc) {
+        cpu.step(gb);
+    }
 }
 
 const Pixel = packed struct {

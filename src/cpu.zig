@@ -4,8 +4,8 @@ const testing = std.testing;
 const gameboy = @import("gb.zig");
 const memory = @import("memory.zig");
 
-/// Executes a single CPU instruction.
-pub fn execute(gb: *gameboy.State) void {
+/// Fetch, decode, and execute a single CPU instruction.
+pub fn step(gb: *gameboy.State) void {
     // If the scheduled `ei` instruction wasn't cancelled, then enable
     // interrupt handling after the next instruction runs.
     const scheduled_ei = gb.scheduled_ei;
@@ -293,7 +293,7 @@ fn rlca(gb: *gameboy.State) void {
 /// specified by the 16-bit immediate operand a16 and the upper
 /// byte of SP at address a16 + 1.
 fn ld_da16_sp(gb: *gameboy.State) void {
-    const addr: gameboy.Addr = fetch16(gb);
+    const addr: memory.Addr = fetch16(gb);
 
     cycleWrite(gb, addr, @intCast(gb.registers.named16.sp & 0x00ff));
     cycleWrite(gb, addr + 1, @intCast(gb.registers.named16.sp >> 8));
@@ -608,7 +608,7 @@ fn pop_rr(gb: *gameboy.State, rr: *u16) void {
 /// incremented, and the next instruction following the current JP instruction
 /// is executed (as usual).
 fn jp_cc_a16(gb: *gameboy.State, condition: bool) void {
-    const addr: gameboy.Addr = fetch16(gb);
+    const addr: memory.Addr = fetch16(gb);
 
     if (condition) {
         gb.tick();
@@ -627,7 +627,7 @@ fn jp_a16(gb: *gameboy.State) void {
 /// to the 2 bytes following the memory byte specified by the stack pointer. The
 /// 16-bit immediate operand `a16` is then loaded into PC.
 fn call_cc_a16(gb: *gameboy.State, condition: bool) void {
-    const addr: gameboy.Addr = fetch16(gb);
+    const addr: memory.Addr = fetch16(gb);
 
     if (condition) {
         push_rr(gb, &gb.registers.named16.pc);
@@ -789,7 +789,7 @@ fn ld_sp_hl(gb: *gameboy.State) void {
 /// Store the contents of register `A` in the internal RAM or register specified by
 /// the 16-bit immediate operand `a16`.
 fn ld_da16_a(gb: *gameboy.State) void {
-    const addr: gameboy.Addr = fetch16(gb);
+    const addr: memory.Addr = fetch16(gb);
     cycleWrite(gb, addr, gb.registers.named8.a);
 }
 
@@ -832,7 +832,7 @@ fn or_a_d8(gb: *gameboy.State) void {
 /// Load into register `A` the contents of the internal RAM or register specified
 /// by the 16-bit immediate operand `a16`.
 fn ld_a_da16(gb: *gameboy.State) void {
-    const addr: gameboy.Addr = fetch16(gb);
+    const addr: memory.Addr = fetch16(gb);
     gb.registers.named8.a = cycleRead(gb, addr);
 }
 
@@ -1127,12 +1127,12 @@ fn fetch8(gb: *gameboy.State) u8 {
     return value;
 }
 
-fn cycleRead(gb: *gameboy.State, addr: gameboy.Addr) u8 {
+fn cycleRead(gb: *gameboy.State, addr: memory.Addr) u8 {
     gb.tick();
     return memory.readByte(gb, addr);
 }
 
-fn cycleWrite(gb: *gameboy.State, addr: gameboy.Addr, value: u8) void {
+fn cycleWrite(gb: *gameboy.State, addr: memory.Addr, value: u8) void {
     gb.tick();
     memory.writeByte(gb, addr, value);
 }
@@ -1202,5 +1202,5 @@ test "exec nop" {
     var gb = try gameboy.State.init(testing.allocator);
     defer gb.free(testing.allocator);
 
-    execute(&gb);
+    step(&gb);
 }
