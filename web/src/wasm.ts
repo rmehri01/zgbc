@@ -12,16 +12,31 @@ interface ZgbcRaw {
 
   allocUint8Array: (len: number) => GameboyPtr;
   init: () => GameboyPtr;
-  pixels: (gb: GameboyPtr) => GameboyPtr;
-  step: (gb: GameboyPtr) => void;
   loadROM: (gb: GameboyPtr, ptr: GameboyPtr, len: number) => void;
+  step: (gb: GameboyPtr) => void;
+  pixels: (gb: GameboyPtr) => GameboyPtr;
+  buttonPress: (gb: GameboyPtr, button: Button) => void;
+  buttonRelease: (gb: GameboyPtr, button: Button) => void;
+}
+
+export enum Button {
+  Up,
+  Down,
+  Left,
+  Right,
+  Start,
+  Select,
+  A,
+  B,
 }
 
 /** The main interface for interacting with zgbc.wasm. */
 export interface Zgbc {
-  pixels: () => Uint8ClampedArray;
-  step: () => void;
   loadROM: (rom: Uint8Array) => void;
+  step: () => void;
+  pixels: () => Uint8ClampedArray;
+  buttonPress: (button: Button) => void;
+  buttonRelease: (button: Button) => void;
 }
 
 function createZgbc(raw: ZgbcRaw): Zgbc {
@@ -44,6 +59,8 @@ function createZgbc(raw: ZgbcRaw): Zgbc {
       buf.set(rom);
       raw.loadROM(gb, bufPtr, rom.length);
     },
+    buttonPress: (button: Button) => raw.buttonPress(gb, button),
+    buttonRelease: (button: Button) => raw.buttonRelease(gb, button),
   };
 }
 

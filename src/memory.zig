@@ -86,6 +86,7 @@ fn read_not_usable(gb: *gameboy.State, addr: Addr) u8 {
 
 fn read_io_registers(gb: *gameboy.State, addr: Addr) u8 {
     return switch (addr) {
+        0xff00 => @bitCast(gb.io_registers.joyp),
         0xff40 => @bitCast(gb.io_registers.lcdc),
         0xff42 => gb.io_registers.scy,
         0xff43 => gb.io_registers.scx,
@@ -168,6 +169,7 @@ fn write_not_usable(gb: *gameboy.State, addr: Addr, value: u8) void {
 
 fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
     switch (addr) {
+        0xff00 => gb.io_registers.joyp = @bitCast(value & 0x30),
         0xff40 => gb.io_registers.lcdc = @bitCast(value),
         0xff42 => gb.io_registers.scy = value,
         0xff43 => gb.io_registers.scx = value,

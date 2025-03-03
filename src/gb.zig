@@ -34,6 +34,19 @@ pub const State = struct {
     hram: *[0x7f]u8,
     /// Memory mapped I/O registers.
     io_registers: struct {
+        /// Joypad as a 2x4 matrix with two selectors.
+        joyp: packed struct(u8) {
+            a_right: u1,
+            b_left: u1,
+            select_up: u1,
+            start_down: u1,
+            /// If 0, the buttons SsBA can be read from the lower nibble.
+            select_d_pad: u1,
+            /// If 0, the directional keys can be read from the lower nibble.
+            select_buttons: u1,
+            _: u2 = 0b11,
+        },
+        /// LCD control register.
         lcdc: packed struct(u8) {
             /// In non-CGB mode, when cleared, the background and window are blank.
             /// In CGB mode, when cleared, the background and window lose priority.
@@ -97,6 +110,14 @@ pub const State = struct {
             .oam = try allocator.create([0xa0]u8),
             .hram = try allocator.create([0x7f]u8),
             .io_registers = .{
+                .joyp = .{
+                    .a_right = 1,
+                    .b_left = 1,
+                    .select_up = 1,
+                    .start_down = 1,
+                    .select_d_pad = 1,
+                    .select_buttons = 1,
+                },
                 .lcdc = .{
                     .bg_window_clear_priority = false,
                     .obj_enable = false,
@@ -184,6 +205,10 @@ const RegisterFile = extern union {
         try writer.endObject();
     }
 };
+
+/// One of the possible buttons that can be pressed.
+/// `u8` instead of `u3` since it needs to be extern compatible.
+pub const Button = enum(u8) { up, down, left, right, start, select, a, b };
 
 test "RegisterFile get" {
     const registers = RegisterFile{ .named16 = .{ .af = 0x1234, .bc = 0, .de = 0, .hl = 0xbeef, .sp = 0, .pc = 0 } };
