@@ -28,23 +28,6 @@ export fn step(gb: *gameboy.State) void {
     ppu.step(gb);
 }
 
-export fn stepUntil(gb: *gameboy.State, pc: u16) void {
-    while (gb.registers.named16.pc != pc) {
-        cpu.step(gb);
-    }
-}
-
-const Pixel = packed struct {
-    r: u8,
-    g: u8,
-    b: u8,
-    a: u8,
-};
-
-var pixel_buf = [_]Pixel{.{ .r = 255, .g = 0, .b = 0, .a = 255 }} ** (144 * 160);
-
-export fn pixels(gb: *gameboy.State) [*]Pixel {
-    // TODO: return based on display state
-    _ = gb; // autofix
-    return &pixel_buf;
+export fn pixels(gb: *gameboy.State) [*]ppu.Pixel {
+    return gb.pixels;
 }

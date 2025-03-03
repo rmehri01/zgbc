@@ -6,10 +6,15 @@ const gameboy = @import("gb.zig");
 /// 16-bit address to index ROM, RAM, and I/O.
 pub const Addr = u16;
 
-const VRAM_START = 0x8000;
-const RAM_START = 0xc000;
-const OAM_START = 0xfe00;
-const HRAM_START = 0xff80;
+pub const VRAM_START = 0x8000;
+pub const TILE_BLOCK0_START = 0x8000;
+pub const TILE_BLOCK1_START = 0x8800;
+pub const TILE_BLOCK2_START = 0x9000;
+pub const TILE_MAP0_START = 0x9800;
+pub const TILE_MAP1_START = 0x9c00;
+pub const RAM_START = 0xc000;
+pub const OAM_START = 0xfe00;
+pub const HRAM_START = 0xff80;
 
 /// Reads a single byte at the given `Addr`, delegating it
 /// to the correct handler.
@@ -80,9 +85,14 @@ fn read_not_usable(gb: *gameboy.State, addr: Addr) u8 {
 }
 
 fn read_io_registers(gb: *gameboy.State, addr: Addr) u8 {
-    _ = gb; // autofix
-    _ = addr; // autofix
-    return 0;
+    return switch (addr) {
+        0xff40 => @bitCast(gb.io_registers.lcdc),
+        0xff42 => gb.io_registers.scy,
+        0xff43 => gb.io_registers.scx,
+        0xff44 => gb.io_registers.ly,
+        0xff47 => @bitCast(gb.io_registers.bgp),
+        else => 0xff,
+    };
 }
 
 fn read_hram(gb: *gameboy.State, addr: Addr) u8 {
@@ -157,9 +167,13 @@ fn write_not_usable(gb: *gameboy.State, addr: Addr, value: u8) void {
 }
 
 fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
-    _ = gb;
-    _ = addr;
-    _ = value;
+    switch (addr) {
+        0xff40 => gb.io_registers.lcdc = @bitCast(value),
+        0xff42 => gb.io_registers.scy = value,
+        0xff43 => gb.io_registers.scx = value,
+        0xff47 => gb.io_registers.bgp = @bitCast(value),
+        else => {},
+    }
 }
 
 fn write_hram(gb: *gameboy.State, addr: Addr, value: u8) void {

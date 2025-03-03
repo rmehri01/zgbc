@@ -2,6 +2,9 @@ const std = @import("std");
 const assert = std.debug.assert;
 const testing = std.testing;
 
+const cpu = @import("cpu.zig");
+const ppu = @import("ppu.zig");
+
 const dmg_boot_rom = @embedFile("boot/dmg.bin");
 
 /// The main state of the gameboy emulator.
@@ -14,6 +17,8 @@ pub const State = struct {
     scheduled_ei: bool,
     /// State of the registers in the gameboy.
     registers: RegisterFile,
+    /// The number of t-cycles that are pending.
+    pending_cycles: u8,
 
     /// The boot ROM to use when starting up.
     boot_rom: []const u8,
@@ -27,9 +32,55 @@ pub const State = struct {
     oam: *[0xa0]u8,
     /// High RAM.
     hram: *[0x7f]u8,
+    /// Memory mapped I/O registers.
+    io_registers: struct {
+        lcdc: packed struct(u8) {
+            /// In non-CGB mode, when cleared, the background and window are blank.
+            /// In CGB mode, when cleared, the background and window lose priority.
+            bg_window_clear_priority: bool,
+            /// Whether objects are displayed or not.
+            obj_enable: bool,
+            /// Controls the size of objects (1 or 2 tiles vertically).
+            obj_size: bool,
+            /// If the bit is clear, the background uses tilemap 0x9800, otherwise
+            /// tilemap 0x9c00.
+            bg_tile_map_area: bool,
+            /// If the bit is clear, the background and window use the 0x8800 method,
+            /// otherwise they use the 0x8000 method.
+            bg_window_tile_data_area: bool,
+            /// Whether the window is displayed or not.
+            window_enable: bool,
+            /// If the bit is clear, the window uses tilemap 0x9800, otherwise
+            /// tilemap 0x9c00.
+            window_tile_map_area: bool,
+            /// Whether the LCD is on and the PPU is active.
+            lcd_enable: bool,
+        },
+        /// Background viewport Y position.
+        scy: u8,
+        /// Background viewport X position.
+        scx: u8,
+        /// LCD Y coordinate, the current line that is being drawn in the ppu.
+        ly: u8,
+        /// Background palette data.
+        bgp: packed struct(u8) {
+            id0: u2,
+            id1: u2,
+            id2: u2,
+            id3: u2,
+        },
+    },
+
+    /// The current rendering mode the ppu is in.
+    mode: ppu.Mode,
+    /// The number of horizontal time units that have passed in the ppu.
+    dots: u16,
+    /// The pixels corresponding to the current state of the display.
+    pixels: *[144 * 160]ppu.Pixel,
 
     pub fn tick(self: *@This()) void {
-        _ = self; // autofix
+        // TODO: naive
+        self.pending_cycles += 4;
     }
 
     pub fn init(allocator: std.mem.Allocator) !@This() {
@@ -37,12 +88,39 @@ pub const State = struct {
             .ime = false,
             .scheduled_ei = false,
             .registers = .{ .named16 = .{ .af = 0, .bc = 0, .de = 0, .hl = 0, .sp = 0, .pc = 0 } },
+            .pending_cycles = 0,
+
             .boot_rom = dmg_boot_rom,
             .rom = null,
             .vram = try allocator.create([0x2000]u8),
             .ram = try allocator.create([0x2000]u8),
             .oam = try allocator.create([0xa0]u8),
             .hram = try allocator.create([0x7f]u8),
+            .io_registers = .{
+                .lcdc = .{
+                    .bg_window_clear_priority = false,
+                    .obj_enable = false,
+                    .obj_size = false,
+                    .bg_tile_map_area = false,
+                    .bg_window_tile_data_area = false,
+                    .window_enable = false,
+                    .window_tile_map_area = false,
+                    .lcd_enable = false,
+                },
+                .scy = 0,
+                .scx = 0,
+                .ly = 0,
+                .bgp = .{
+                    .id0 = 0,
+                    .id1 = 0,
+                    .id2 = 0,
+                    .id3 = 0,
+                },
+            },
+
+            .mode = .oam_scan,
+            .dots = 0,
+            .pixels = try allocator.create([144 * 160]ppu.Pixel),
         };
     }
 
@@ -55,6 +133,7 @@ pub const State = struct {
         allocator.destroy(self.ram);
         allocator.destroy(self.oam);
         allocator.destroy(self.hram);
+        allocator.destroy(self.pixels);
     }
 };
 
@@ -70,7 +149,7 @@ const RegisterFile = extern union {
         pc: u16,
     },
     named8: extern struct {
-        f: Flags,
+        f: cpu.Flags,
         a: u8,
         c: u8,
         b: u8,
@@ -104,20 +183,6 @@ const RegisterFile = extern union {
 
         try writer.endObject();
     }
-};
-
-/// Contains information about the result of the most recent CPU
-/// instruction that has affected flags.
-const Flags = packed struct(u8) {
-    _: u4 = 0,
-    /// Carry flag.
-    c: bool,
-    /// Half Carry flag (BCD).
-    h: bool,
-    /// Subtraction flag (BCD).
-    n: bool,
-    /// Zero flag.
-    z: bool,
 };
 
 test "RegisterFile get" {

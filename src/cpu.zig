@@ -4,6 +4,20 @@ const testing = std.testing;
 const gameboy = @import("gb.zig");
 const memory = @import("memory.zig");
 
+/// Contains information about the result of the most recent CPU
+/// instruction that has affected flags.
+pub const Flags = packed struct(u8) {
+    _: u4 = 0,
+    /// Carry flag.
+    c: bool,
+    /// Half Carry flag (BCD).
+    h: bool,
+    /// Subtraction flag (BCD).
+    n: bool,
+    /// Zero flag.
+    z: bool,
+};
+
 /// Fetch, decode, and execute a single CPU instruction.
 pub fn step(gb: *gameboy.State) void {
     // If the scheduled `ei` instruction wasn't cancelled, then enable
@@ -907,8 +921,7 @@ fn rl_r(gb: *gameboy.State, op_code: comptime_int) void {
     const src = getSrc(gb, op_code);
     const bit7 = (src & 0x80) != 0;
 
-    const value =
-        (gb.registers.named8.a << 1) | @intFromBool(gb.registers.named8.f.c);
+    const value = (src << 1) | @intFromBool(gb.registers.named8.f.c);
     setDst(gb, op_code, value);
 
     gb.registers.named8.f.z = value == 0;
