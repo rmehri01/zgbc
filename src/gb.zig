@@ -23,7 +23,7 @@ pub const State = struct {
     /// The boot ROM to use when starting up.
     boot_rom: []const u8,
     /// The cartridge that is currently loaded.
-    rom: ?[]u8,
+    rom: ?[]const u8,
     /// Video RAM.
     vram: *[0x2000]u8,
     /// Work RAM.
@@ -46,26 +46,35 @@ pub const State = struct {
             select_buttons: u1,
             _: u2 = 0b11,
         },
+        /// Interrupt flag, indicates whether the corresponding handler is being requested.
+        intf: packed struct(u8) {
+            v_blank: bool,
+            lcd: bool,
+            timer: bool,
+            serial: bool,
+            joypad: bool,
+            _: u3 = 0,
+        },
         /// LCD control register.
         lcdc: packed struct(u8) {
-            /// In non-CGB mode, when cleared, the background and window are blank.
-            /// In CGB mode, when cleared, the background and window lose priority.
-            bg_window_clear_priority: bool,
+            /// (non-CGB only) When cleared, the background and window are blank.
+            /// (CGB only) When cleared, the background and window lose priority.
+            bg_window_enable_priority: bool,
             /// Whether objects are displayed or not.
             obj_enable: bool,
             /// Controls the size of objects (1 or 2 tiles vertically).
             obj_size: bool,
             /// If the bit is clear, the background uses tilemap 0x9800, otherwise
             /// tilemap 0x9c00.
-            bg_tile_map_area: bool,
+            bg_tile_map_area: u1,
             /// If the bit is clear, the background and window use the 0x8800 method,
             /// otherwise they use the 0x8000 method.
-            bg_window_tile_data_area: bool,
+            bg_window_tile_data_area: enum(u1) { signed = 0, unsigned = 1 },
             /// Whether the window is displayed or not.
             window_enable: bool,
             /// If the bit is clear, the window uses tilemap 0x9800, otherwise
             /// tilemap 0x9c00.
-            window_tile_map_area: bool,
+            window_tile_map_area: u1,
             /// Whether the LCD is on and the PPU is active.
             lcd_enable: bool,
         },
@@ -81,6 +90,32 @@ pub const State = struct {
             id1: u2,
             id2: u2,
             id3: u2,
+        },
+        /// Object palette data 0.
+        obp0: packed struct(u8) {
+            _: u2 = 0,
+            id1: u2,
+            id2: u2,
+            id3: u2,
+        },
+        /// Object palette data 1.
+        obp1: packed struct(u8) {
+            _: u2 = 0,
+            id1: u2,
+            id2: u2,
+            id3: u2,
+        },
+        /// Set to non-zero to disable boot ROM.
+        boot_rom_finished: u8,
+        /// Interrupt enable, controls whether the corresponding handler may be called.
+        /// This isn't actually part of the io register range but conceptually it is.
+        ie: packed struct(u8) {
+            v_blank: bool,
+            lcd: bool,
+            timer: bool,
+            serial: bool,
+            joypad: bool,
+            _: u3 = 0,
         },
     },
 
@@ -118,14 +153,21 @@ pub const State = struct {
                     .select_d_pad = 1,
                     .select_buttons = 1,
                 },
+                .intf = .{
+                    .v_blank = false,
+                    .lcd = false,
+                    .timer = false,
+                    .serial = false,
+                    .joypad = false,
+                },
                 .lcdc = .{
-                    .bg_window_clear_priority = false,
+                    .bg_window_enable_priority = false,
                     .obj_enable = false,
                     .obj_size = false,
-                    .bg_tile_map_area = false,
-                    .bg_window_tile_data_area = false,
+                    .bg_tile_map_area = 0,
+                    .bg_window_tile_data_area = .signed,
                     .window_enable = false,
-                    .window_tile_map_area = false,
+                    .window_tile_map_area = 0,
                     .lcd_enable = false,
                 },
                 .scy = 0,
@@ -136,6 +178,24 @@ pub const State = struct {
                     .id1 = 0,
                     .id2 = 0,
                     .id3 = 0,
+                },
+                .obp0 = .{
+                    .id1 = 0,
+                    .id2 = 0,
+                    .id3 = 0,
+                },
+                .obp1 = .{
+                    .id1 = 0,
+                    .id2 = 0,
+                    .id3 = 0,
+                },
+                .boot_rom_finished = 0,
+                .ie = .{
+                    .v_blank = false,
+                    .lcd = false,
+                    .timer = false,
+                    .serial = false,
+                    .joypad = false,
                 },
             },
 

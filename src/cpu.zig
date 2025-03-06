@@ -230,7 +230,12 @@ pub fn step(gb: *gameboy.State) void {
         0xef => rst(gb, 5),
 
         0xf0 => ld_a_da8(gb),
-        0xf1 => pop_rr(gb, &gb.registers.named16.af),
+        0xf1 => {
+            pop_rr(gb, &gb.registers.named16.af);
+
+            // don't set non-existent flags
+            gb.registers.named8.f._ = 0;
+        },
         0xf2 => ld_a_dc(gb),
         0xf3 => di(gb),
         0xf4 => illegal(),
@@ -319,10 +324,14 @@ fn add_hl_rr(gb: *gameboy.State, rr: *const u16) void {
     gb.tick();
 
     const value, const overflowed = @addWithOverflow(gb.registers.named16.hl, rr.*);
+    const half_carry = @addWithOverflow(
+        @as(u12, @truncate(gb.registers.named16.hl)),
+        @as(u12, @truncate(rr.*)),
+    )[1] == 1;
     gb.registers.named16.hl = value;
 
     gb.registers.named8.f.n = false;
-    gb.registers.named8.f.h = @addWithOverflow(@as(u12, @truncate(gb.registers.named16.hl)), @as(u12, @truncate(rr.*)))[1] == 1;
+    gb.registers.named8.f.h = half_carry;
     gb.registers.named8.f.c = overflowed == 1;
 }
 
@@ -412,7 +421,7 @@ fn ld_dhli_a(gb: *gameboy.State) void {
 /// Adjust register `A` to a binary-coded decimal number after BCD
 /// addition and subtraction operations.
 fn daa(gb: *gameboy.State) void {
-    const value, const overflowed =
+    const value, const should_carry =
         if (gb.registers.named8.f.n) result: {
             var adjustment: u8 = 0;
 
@@ -423,14 +432,14 @@ fn daa(gb: *gameboy.State) void {
                 adjustment += 0x60;
             }
 
-            break :result @subWithOverflow(gb.registers.named8.a, adjustment);
+            break :result .{ gb.registers.named8.a -% adjustment, 0 };
         } else result: {
             var adjustment: u8 = 0;
 
             if (gb.registers.named8.f.h or (gb.registers.named8.a & 0x0f) > 0x09) {
                 adjustment += 0x06;
             }
-            if (gb.registers.named8.f.c or (gb.registers.named8.a & 0x0f) > 0x99) {
+            if (gb.registers.named8.f.c or gb.registers.named8.a > 0x99) {
                 adjustment += 0x60;
             }
 
@@ -440,7 +449,9 @@ fn daa(gb: *gameboy.State) void {
     gb.registers.named8.a = value;
     gb.registers.named8.f.z = value == 0;
     gb.registers.named8.f.h = false;
-    gb.registers.named8.f.c = overflowed == 1;
+    // if subtraction wasn't performed and the unconverted value is greater than 0x99
+    // or if the carry bit was already set, then our BCD value is also greater than 99
+    gb.registers.named8.f.c = gb.registers.named8.f.c or should_carry == 1;
 }
 
 /// Load the contents of memory specified by register pair `HL` into
@@ -668,7 +679,7 @@ fn add_a_d8(gb: *gameboy.State) void {
 
 /// Push the current value of the program counter onto the memory stack, and
 /// load into `PC` the nth byte of page 0 memory addresses.
-fn rst(gb: *gameboy.State, comptime n: u8) void {
+pub fn rst(gb: *gameboy.State, comptime n: u8) void {
     push_rr(gb, &gb.registers.named16.pc);
     gb.registers.named16.pc = n * 0x08;
 }
@@ -754,18 +765,25 @@ fn add_sp_s8(gb: *gameboy.State) void {
     gb.tick();
 
     const offset: i8 = @bitCast(fetch8(gb));
-    const value, const overflowed = if (offset < 0) result: {
-        break :result @subWithOverflow(gb.registers.named16.sp, @abs(offset));
+    const value = if (offset < 0) result: {
+        break :result gb.registers.named16.sp -% @abs(offset);
     } else result: {
-        break :result @addWithOverflow(gb.registers.named16.sp, @abs(offset));
+        break :result gb.registers.named16.sp +% @abs(offset);
     };
+    const half_carry = @addWithOverflow(
+        @as(u4, @truncate(gb.registers.named16.sp)),
+        @as(u4, @truncate(@as(u8, @bitCast(offset)))),
+    )[1] == 1;
+    const carry = @addWithOverflow(
+        @as(u8, @truncate(gb.registers.named16.sp)),
+        @as(u8, @bitCast(offset)),
+    )[1] == 1;
     gb.registers.named16.sp = value;
 
     gb.registers.named8.f.z = false;
     gb.registers.named8.f.n = false;
-    gb.registers.named8.f.h =
-        @addWithOverflow(@as(u4, @truncate(gb.registers.named16.sp)), @as(u4, @truncate(@as(u8, @bitCast(offset)))))[1] == 1;
-    gb.registers.named8.f.c = overflowed == 1;
+    gb.registers.named8.f.h = half_carry;
+    gb.registers.named8.f.c = carry;
 }
 
 /// Load the contents of register pair `HL` into the program counter. The next instruction
@@ -780,18 +798,25 @@ fn ld_hl_sp_s8(gb: *gameboy.State) void {
     gb.tick();
 
     const offset: i8 = @bitCast(fetch8(gb));
-    const value, const overflowed = if (offset < 0) result: {
-        break :result @subWithOverflow(gb.registers.named16.sp, @abs(offset));
+    const value = if (offset < 0) result: {
+        break :result gb.registers.named16.sp -% @abs(offset);
     } else result: {
-        break :result @addWithOverflow(gb.registers.named16.sp, @abs(offset));
+        break :result gb.registers.named16.sp +% @abs(offset);
     };
+    const half_carry = @addWithOverflow(
+        @as(u4, @truncate(gb.registers.named16.sp)),
+        @as(u4, @truncate(@as(u8, @bitCast(offset)))),
+    )[1] == 1;
+    const carry = @addWithOverflow(
+        @as(u8, @truncate(gb.registers.named16.sp)),
+        @as(u8, @bitCast(offset)),
+    )[1] == 1;
     gb.registers.named16.hl = value;
 
     gb.registers.named8.f.z = false;
     gb.registers.named8.f.n = false;
-    gb.registers.named8.f.h =
-        @addWithOverflow(@as(u4, @truncate(gb.registers.named16.sp)), @as(u4, @truncate(@as(u8, @bitCast(offset)))))[1] == 1;
-    gb.registers.named8.f.c = overflowed == 1;
+    gb.registers.named8.f.h = half_carry;
+    gb.registers.named8.f.c = carry;
 }
 
 /// Load the contents of register pair `HL` into the stack pointer `SP`.
@@ -978,7 +1003,7 @@ fn sra_r(gb: *gameboy.State, op_code: comptime_int) void {
 /// Swap the lower and higher four bits of register `r`.
 fn swap_r(gb: *gameboy.State, op_code: comptime_int) void {
     const src = getSrc(gb, op_code);
-    const value = src & 0x0f | src & 0xf0;
+    const value = (src & 0x0f) << 4 | (src & 0xf0) >> 4;
     setDst(gb, op_code, value);
 
     gb.registers.named8.f.z = value == 0;
@@ -987,7 +1012,7 @@ fn swap_r(gb: *gameboy.State, op_code: comptime_int) void {
     gb.registers.named8.f.c = false;
 }
 
-/// Shift the contents of register `B` to the right, resetting bit 7.
+/// Shift the contents of register `r` to the right, resetting bit 7.
 fn srl_r(gb: *gameboy.State, op_code: comptime_int) void {
     const src = getSrc(gb, op_code);
     const bit0 = (src & 0x01) != 0;
@@ -1035,11 +1060,15 @@ fn illegal() void {
 
 fn add_a_x(gb: *gameboy.State, src: u8) void {
     const value, const overflowed = @addWithOverflow(gb.registers.named8.a, src);
+    const half_carry = @addWithOverflow(
+        @as(u4, @truncate(gb.registers.named8.a)),
+        @as(u4, @truncate(src)),
+    )[1] == 1;
     gb.registers.named8.a = value;
 
     gb.registers.named8.f.z = value == 0;
     gb.registers.named8.f.n = false;
-    gb.registers.named8.f.h = @addWithOverflow(@as(u4, @truncate(gb.registers.named8.a)), @as(u4, @truncate(src)))[1] == 1;
+    gb.registers.named8.f.h = half_carry;
     gb.registers.named8.f.c = overflowed == 1;
 }
 
@@ -1049,39 +1078,49 @@ fn adc_a_x(gb: *gameboy.State, src: u8) void {
         src,
         @intFromBool(gb.registers.named8.f.c),
     });
-    gb.registers.named8.a = value;
-
-    gb.registers.named8.f.z = value == 0;
-    gb.registers.named8.f.n = false;
-    gb.registers.named8.f.h = addManyWithOverflow(u4, 3, [_]u4{
+    const half_carry = addManyWithOverflow(u4, 3, [_]u4{
         @as(u4, @truncate(gb.registers.named8.a)),
         @as(u4, @truncate(src)),
         @intFromBool(gb.registers.named8.f.c),
     })[1];
+    gb.registers.named8.a = value;
+
+    gb.registers.named8.f.z = value == 0;
+    gb.registers.named8.f.n = false;
+    gb.registers.named8.f.h = half_carry;
     gb.registers.named8.f.c = overflow;
 }
 
 fn sub_a_x(gb: *gameboy.State, src: u8) void {
     const value, const overflowed = @subWithOverflow(gb.registers.named8.a, src);
+    const half_carry = @subWithOverflow(
+        @as(u4, @truncate(gb.registers.named8.a)),
+        @as(u4, @truncate(src)),
+    )[1] == 1;
     gb.registers.named8.a = value;
 
     gb.registers.named8.f.z = value == 0;
     gb.registers.named8.f.n = true;
-    gb.registers.named8.f.h = @subWithOverflow(@as(u4, @truncate(gb.registers.named8.a)), @as(u4, @truncate(src)))[1] == 1;
+    gb.registers.named8.f.h = half_carry;
     gb.registers.named8.f.c = overflowed == 1;
 }
 
 fn sbc_a_x(gb: *gameboy.State, src: u8) void {
-    const value, const overflowed = subManyWithOverflow(u8, 3, [_]u8{ gb.registers.named8.a, src, @intFromBool(gb.registers.named8.f.c) });
-    gb.registers.named8.a = value;
-
-    gb.registers.named8.f.z = value == 0;
-    gb.registers.named8.f.n = true;
-    gb.registers.named8.f.h = subManyWithOverflow(u4, 3, [_]u4{
+    const value, const overflowed = subManyWithOverflow(u8, 3, [_]u8{
+        gb.registers.named8.a,
+        src,
+        @intFromBool(gb.registers.named8.f.c),
+    });
+    const half_carry = subManyWithOverflow(u4, 3, [_]u4{
         @as(u4, @truncate(gb.registers.named8.a)),
         @as(u4, @truncate(src)),
         @intFromBool(gb.registers.named8.f.c),
     })[1];
+    gb.registers.named8.a = value;
+
+    gb.registers.named8.f.z = value == 0;
+    gb.registers.named8.f.n = true;
+    gb.registers.named8.f.h = half_carry;
     gb.registers.named8.f.c = overflowed;
 }
 
@@ -1120,7 +1159,10 @@ fn cp_a_x(gb: *gameboy.State, src: u8) void {
 
     gb.registers.named8.f.z = value == 0;
     gb.registers.named8.f.n = true;
-    gb.registers.named8.f.h = @subWithOverflow(@as(u4, @truncate(gb.registers.named8.a)), @as(u4, @truncate(src)))[1] == 1;
+    gb.registers.named8.f.h = @subWithOverflow(
+        @as(u4, @truncate(gb.registers.named8.a)),
+        @as(u4, @truncate(src)),
+    )[1] == 1;
     gb.registers.named8.f.c = overflowed == 1;
 }
 
@@ -1208,12 +1250,4 @@ fn setDst(gb: *gameboy.State, op_code: comptime_int, value: u8) void {
         6 => cycleWrite(gb, gb.registers.named16.hl, value),
         7 => gb.registers.named8.a = value,
     }
-}
-
-test "exec nop" {
-    // TODO: fill memory state and check state after exec
-    var gb = try gameboy.State.init(testing.allocator);
-    defer gb.free(testing.allocator);
-
-    step(&gb);
 }

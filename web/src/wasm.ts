@@ -12,6 +12,7 @@ interface ZgbcRaw {
 
   allocUint8Array: (len: number) => GameboyPtr;
   init: () => GameboyPtr;
+  deinit: (gb: GameboyPtr) => void;
   loadROM: (gb: GameboyPtr, ptr: GameboyPtr, len: number) => void;
   step: (gb: GameboyPtr) => void;
   pixels: (gb: GameboyPtr) => GameboyPtr;
@@ -40,7 +41,7 @@ export interface Zgbc {
 }
 
 function createZgbc(raw: ZgbcRaw): Zgbc {
-  const gb = raw.init();
+  let gb = raw.init();
 
   return {
     pixels: () => {
@@ -53,6 +54,9 @@ function createZgbc(raw: ZgbcRaw): Zgbc {
     },
     step: () => raw.step(gb),
     loadROM: (rom) => {
+      raw.deinit(gb);
+      gb = raw.init();
+
       const bufPtr = raw.allocUint8Array(rom.length);
       const buf = new Uint8Array(raw.memory.buffer, bufPtr, rom.length);
 

@@ -30,6 +30,30 @@ const colors = [4]Pixel{
     .{ .r = 8, .g = 24, .b = 32, .a = 255 },
 };
 
+/// An object (or a sprite) is either 8x8 or 8x16 pixels and can be displayed anywhere.
+const Object = packed struct(u32) {
+    /// Y-coordinate of top left corner stored as y - 16 since it can be off the screen.
+    y_pos: u8,
+    /// X-coordinate of top left corner stored as y - 8 since it can be off the screen.
+    x_pos: u8,
+    /// Index into the tile data for this object's tile.
+    tile_id: u8,
+    flags: packed struct(u8) {
+        /// (CGB only) Which of OBP0–7 to use.
+        cgb_palette: u3,
+        /// (CGB only) Which VRAM bank to fetch from.
+        bank: u1,
+        /// (non-CGB only) Which of OBP0-1 to use.
+        dmg_palette: bool,
+        /// Horizontally mirror the object.
+        x_flip: bool,
+        /// Vertically mirror the object.
+        y_flip: bool,
+        /// Whether the object is above or below the background and window.
+        priority: enum(u1) { above = 0, below = 1 },
+    },
+};
+
 /// Execute a single step of the ppu.
 pub fn step(gb: *gameboy.State) void {
     gb.dots += gb.pending_cycles;
@@ -56,6 +80,7 @@ pub fn step(gb: *gameboy.State) void {
 
                 if (gb.io_registers.ly == 144) {
                     gb.mode = .v_blank;
+                    gb.io_registers.intf.v_blank = true;
                 } else {
                     gb.mode = .oam_scan;
                 }
@@ -79,43 +104,47 @@ fn render_line(gb: *gameboy.State) void {
     const y_pixel = gb.io_registers.ly +% gb.io_registers.scy;
     const x_pixel_start = gb.io_registers.scx;
 
-    const bg_tile_map_start: memory.Addr = if (gb.io_registers.lcdc.bg_tile_map_area)
-        memory.TILE_MAP1_START
-    else
-        memory.TILE_MAP0_START;
-    const data_area_start: memory.Addr = if (gb.io_registers.lcdc.bg_window_tile_data_area)
-        memory.TILE_BLOCK0_START
-    else
-        memory.TILE_BLOCK2_START;
+    const bg_tile_map_start: memory.Addr = switch (gb.io_registers.lcdc.bg_tile_map_area) {
+        0 => memory.TILE_MAP0_START,
+        1 => memory.TILE_MAP1_START,
+    };
+    const data_area_start: memory.Addr = switch (gb.io_registers.lcdc.bg_window_tile_data_area) {
+        .signed => memory.TILE_BLOCK2_START,
+        .unsigned => memory.TILE_BLOCK0_START,
+    };
 
-    for (0..160) |x_pixel_off| {
-        const x_pixel = x_pixel_start +% x_pixel_off;
+    if (gb.io_registers.lcdc.bg_window_enable_priority) {
+        for (0..160) |x_pixel_off| {
+            const x_pixel = x_pixel_start +% x_pixel_off;
 
-        const tile_id = gb.vram[bg_tile_map_start + (@as(u16, y_pixel) / 8) * 32 + (x_pixel / 8) - memory.VRAM_START];
-        var tile_addr = if (gb.io_registers.lcdc.bg_window_tile_data_area)
-            data_area_start + @as(u16, tile_id) * 16
-        else value: {
-            const offset: i8 = @bitCast(tile_id);
-            break :value if (offset < 0)
-                data_area_start - @abs(offset)
-            else
-                data_area_start + @abs(offset);
-        };
-        tile_addr += (y_pixel % 8) * 2;
+            const tile_id = gb.vram[bg_tile_map_start + (@as(u16, y_pixel) / 8) * 32 + (x_pixel / 8) - memory.VRAM_START];
+            var tile_addr = switch (gb.io_registers.lcdc.bg_window_tile_data_area) {
+                .signed => value: {
+                    const offset: i8 = @bitCast(tile_id);
+                    break :value if (offset < 0)
+                        data_area_start - @abs(offset)
+                    else
+                        data_area_start + @abs(offset);
+                },
+                .unsigned => data_area_start + @as(u16, tile_id) * 16,
+            };
 
-        const tile_data1 = gb.vram[tile_addr - memory.VRAM_START];
-        const tile_data2 = gb.vram[tile_addr + 1 - memory.VRAM_START];
+            tile_addr += (y_pixel % 8) * 2;
 
-        const lo = tile_data1 & (@as(u8, 0x80) >> @intCast(x_pixel % 8)) != 0;
-        const hi = tile_data2 & (@as(u8, 0x80) >> @intCast(x_pixel % 8)) != 0;
+            const tile_data1 = gb.vram[tile_addr - memory.VRAM_START];
+            const tile_data2 = gb.vram[tile_addr + 1 - memory.VRAM_START];
 
-        const palette_id = @as(u2, @intFromBool(hi)) << 1 | @intFromBool(lo);
-        const color_id = switch (palette_id) {
-            0 => gb.io_registers.bgp.id0,
-            1 => gb.io_registers.bgp.id1,
-            2 => gb.io_registers.bgp.id2,
-            3 => gb.io_registers.bgp.id3,
-        };
-        gb.pixels[@as(u16, gb.io_registers.ly) * 160 + x_pixel_off] = colors[color_id];
+            const lo = tile_data1 & (@as(u8, 0x80) >> @intCast(x_pixel % 8)) != 0;
+            const hi = tile_data2 & (@as(u8, 0x80) >> @intCast(x_pixel % 8)) != 0;
+
+            const palette_id = @as(u2, @intFromBool(hi)) << 1 | @intFromBool(lo);
+            const color_id = switch (palette_id) {
+                0 => gb.io_registers.bgp.id0,
+                1 => gb.io_registers.bgp.id1,
+                2 => gb.io_registers.bgp.id2,
+                3 => gb.io_registers.bgp.id3,
+            };
+            gb.pixels[@as(u16, gb.io_registers.ly) * 160 + x_pixel_off] = colors[color_id];
+        }
     }
 }

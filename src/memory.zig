@@ -26,18 +26,18 @@ pub fn readByte(gb: *gameboy.State, addr: Addr) u8 {
         0xa000...0xbfff => read_mbc_ram(gb, addr),
         0xc000...0xcfff => read_ram(gb, addr),
         0xd000...0xdfff => read_banked_ram(gb, addr),
-        0xe000...0xfdff => read_ram(gb, addr),
+        // TODO: clean up
+        0xe000...0xfdff => read_ram(gb, addr - 0x2000),
         0xfe00...0xfe9f => read_oam(gb, addr),
         0xfea0...0xfeff => read_not_usable(gb, addr),
         0xff00...0xff7f => read_io_registers(gb, addr),
         0xff80...0xfffe => read_hram(gb, addr),
-        0xffff => read_ie(gb, addr),
+        0xffff => read_ie(gb),
     };
 }
 
 fn read_rom(gb: *gameboy.State, addr: Addr) u8 {
-    // TODO: track if rom is finished
-    if (addr < 0x100) {
+    if (gb.io_registers.boot_rom_finished == 0 and addr < 0x100) {
         return gb.boot_rom[addr];
     }
 
@@ -49,9 +49,11 @@ fn read_rom(gb: *gameboy.State, addr: Addr) u8 {
 }
 
 fn read_mbc_rom(gb: *gameboy.State, addr: Addr) u8 {
-    _ = gb; // autofix
-    _ = addr; // autofix
-    return 0;
+    if (gb.rom) |rom| {
+        return rom[addr];
+    }
+
+    return 0xff;
 }
 
 fn read_vram(gb: *gameboy.State, addr: Addr) u8 {
@@ -69,9 +71,7 @@ fn read_ram(gb: *gameboy.State, addr: Addr) u8 {
 }
 
 fn read_banked_ram(gb: *gameboy.State, addr: Addr) u8 {
-    _ = gb; // autofix
-    _ = addr; // autofix
-    return 0;
+    return gb.ram[addr - RAM_START];
 }
 
 fn read_oam(gb: *gameboy.State, addr: Addr) u8 {
@@ -81,17 +81,22 @@ fn read_oam(gb: *gameboy.State, addr: Addr) u8 {
 fn read_not_usable(gb: *gameboy.State, addr: Addr) u8 {
     _ = gb; // autofix
     _ = addr; // autofix
+    // TODO: oam corruption
     return 0;
 }
 
 fn read_io_registers(gb: *gameboy.State, addr: Addr) u8 {
     return switch (addr) {
         0xff00 => @bitCast(gb.io_registers.joyp),
+        0xff0f => @bitCast(gb.io_registers.intf),
         0xff40 => @bitCast(gb.io_registers.lcdc),
         0xff42 => gb.io_registers.scy,
         0xff43 => gb.io_registers.scx,
         0xff44 => gb.io_registers.ly,
         0xff47 => @bitCast(gb.io_registers.bgp),
+        0xff48 => @bitCast(gb.io_registers.obp0),
+        0xff49 => @bitCast(gb.io_registers.obp1),
+        0xff50 => gb.io_registers.boot_rom_finished,
         else => 0xff,
     };
 }
@@ -100,10 +105,8 @@ fn read_hram(gb: *gameboy.State, addr: Addr) u8 {
     return gb.hram[addr - HRAM_START];
 }
 
-fn read_ie(gb: *gameboy.State, addr: Addr) u8 {
-    _ = gb; // autofix
-    _ = addr; // autofix
-    return 0;
+fn read_ie(gb: *gameboy.State) u8 {
+    return @bitCast(gb.io_registers.ie);
 }
 
 /// Writes a single byte at the given `Addr`, delegating it
@@ -116,12 +119,13 @@ pub fn writeByte(gb: *gameboy.State, addr: Addr, value: u8) void {
         0xa000...0xbfff => write_mbc_ram(gb, addr, value),
         0xc000...0xcfff => write_ram(gb, addr, value),
         0xd000...0xdfff => write_banked_ram(gb, addr, value),
-        0xe000...0xfdff => write_ram(gb, addr, value),
+        // TODO: clean up
+        0xe000...0xfdff => write_ram(gb, addr - 0x2000, value),
         0xfe00...0xfe9f => write_oam(gb, addr, value),
         0xfea0...0xfeff => write_not_usable(gb, addr, value),
         0xff00...0xff7f => write_io_registers(gb, addr, value),
         0xff80...0xfffe => write_hram(gb, addr, value),
-        0xffff => write_ie(gb, addr, value),
+        0xffff => write_ie(gb, value),
     };
 }
 
@@ -129,12 +133,14 @@ fn write_rom(gb: *gameboy.State, addr: Addr, value: u8) void {
     _ = gb;
     _ = addr;
     _ = value;
+    // @panic("unimplemented");
 }
 
 fn write_mbc_rom(gb: *gameboy.State, addr: Addr, value: u8) void {
     _ = gb;
     _ = addr;
     _ = value;
+    @panic("unimplemented");
 }
 
 fn write_vram(gb: *gameboy.State, addr: Addr, value: u8) void {
@@ -145,6 +151,7 @@ fn write_mbc_ram(gb: *gameboy.State, addr: Addr, value: u8) void {
     _ = gb;
     _ = addr;
     _ = value;
+    @panic("unimplemented");
 }
 
 fn write_ram(gb: *gameboy.State, addr: Addr, value: u8) void {
@@ -152,9 +159,7 @@ fn write_ram(gb: *gameboy.State, addr: Addr, value: u8) void {
 }
 
 fn write_banked_ram(gb: *gameboy.State, addr: Addr, value: u8) void {
-    _ = gb;
-    _ = addr;
-    _ = value;
+    gb.ram[addr - RAM_START] = value;
 }
 
 fn write_oam(gb: *gameboy.State, addr: Addr, value: u8) void {
@@ -165,6 +170,7 @@ fn write_not_usable(gb: *gameboy.State, addr: Addr, value: u8) void {
     _ = gb;
     _ = addr;
     _ = value;
+    // @panic("unimplemented");
 }
 
 fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
@@ -174,6 +180,9 @@ fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
         0xff42 => gb.io_registers.scy = value,
         0xff43 => gb.io_registers.scx = value,
         0xff47 => gb.io_registers.bgp = @bitCast(value),
+        0xff48 => gb.io_registers.obp0 = @bitCast(value),
+        0xff49 => gb.io_registers.obp1 = @bitCast(value),
+        0xff50 => gb.io_registers.boot_rom_finished = value,
         else => {},
     }
 }
@@ -182,16 +191,6 @@ fn write_hram(gb: *gameboy.State, addr: Addr, value: u8) void {
     gb.hram[addr - HRAM_START] = value;
 }
 
-fn write_ie(gb: *gameboy.State, addr: Addr, value: u8) void {
-    _ = gb;
-    _ = addr;
-    _ = value;
-}
-
-test "read byte" {
-    // TODO: fill memory state and check state after read
-    var gb = try gameboy.State.init(testing.allocator);
-    defer gb.free(testing.allocator);
-
-    _ = readByte(&gb, 0);
+fn write_ie(gb: *gameboy.State, value: u8) void {
+    gb.io_registers.ie = @bitCast(value);
 }
