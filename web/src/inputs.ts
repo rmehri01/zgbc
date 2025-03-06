@@ -2,19 +2,20 @@ import { useEffect } from "react";
 import { Button, Zgbc } from "./wasm";
 
 const KEY_BUTTON_MAP: Record<string, Button> = {
-  KeyW: Button.Up,
-  KeyS: Button.Down,
-  KeyA: Button.Left,
-  KeyD: Button.Right,
+  KeyT: Button.Up,
+  KeyW: Button.Down,
+  KeyM: Button.Left,
+  KeyV: Button.Right,
   Enter: Button.Start,
   Space: Button.Select,
-  KeyK: Button.A,
-  KeyJ: Button.B,
+  KeyU: Button.A,
+  KeyE: Button.B,
 };
 
 export function useSetupInputs(zgbc: Zgbc | null) {
   useEffect(() => {
     window.onkeydown = (e) => {
+      e.preventDefault();
       if (e.repeat) return;
 
       const button = KEY_BUTTON_MAP[e.code];
@@ -23,6 +24,7 @@ export function useSetupInputs(zgbc: Zgbc | null) {
       }
     };
     window.onkeyup = (e) => {
+      e.preventDefault();
       if (e.repeat) return;
 
       const button = KEY_BUTTON_MAP[e.code];

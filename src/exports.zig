@@ -36,6 +36,7 @@ export fn step(gb: *gameboy.State) void {
     if (gb.ime) {
         if (gb.io_registers.ie.v_blank and gb.io_registers.intf.v_blank) {
             gb.io_registers.intf.v_blank = false;
+            gb.ime = false;
             cpu.rst(gb, 8);
         }
     }
@@ -50,18 +51,12 @@ export fn pixels(gb: *gameboy.State) [*]ppu.Pixel {
 
 export fn buttonPress(gb: *gameboy.State, button: gameboy.Button) void {
     switch (button) {
-        .select, .up => gb.io_registers.joyp.select_up = 0,
-        .start, .down => gb.io_registers.joyp.start_down = 0,
-        .b, .left => gb.io_registers.joyp.b_left = 0,
-        .a, .right => gb.io_registers.joyp.a_right = 0,
+        inline else => |b| @field(gb.button_state.named, @tagName(b)) = 0,
     }
 }
 
 export fn buttonRelease(gb: *gameboy.State, button: gameboy.Button) void {
     switch (button) {
-        .select, .up => gb.io_registers.joyp.select_up = 1,
-        .start, .down => gb.io_registers.joyp.start_down = 1,
-        .b, .left => gb.io_registers.joyp.b_left = 1,
-        .a, .right => gb.io_registers.joyp.a_right = 1,
+        inline else => |b| @field(gb.button_state.named, @tagName(b)) = 1,
     }
 }

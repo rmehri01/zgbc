@@ -19,6 +19,8 @@ pub const State = struct {
     registers: RegisterFile,
     /// The number of t-cycles that are pending.
     pending_cycles: u8,
+    /// Which buttons are currently being pressed, 0 means pressed.
+    button_state: ButtonState,
 
     /// The boot ROM to use when starting up.
     boot_rom: []const u8,
@@ -34,17 +36,12 @@ pub const State = struct {
     hram: *[0x7f]u8,
     /// Memory mapped I/O registers.
     io_registers: struct {
-        /// Joypad as a 2x4 matrix with two selectors.
-        joyp: packed struct(u8) {
-            a_right: u1,
-            b_left: u1,
-            select_up: u1,
-            start_down: u1,
+        /// Joypad as a 2x4 matrix with two selectors into the `button_state`.
+        joyp: packed struct(u2) {
             /// If 0, the buttons SsBA can be read from the lower nibble.
-            select_d_pad: u1,
+            select_d_pad: bool,
             /// If 0, the directional keys can be read from the lower nibble.
-            select_buttons: u1,
-            _: u2 = 0b11,
+            select_buttons: bool,
         },
         /// Interrupt flag, indicates whether the corresponding handler is being requested.
         intf: packed struct(u8) {
@@ -84,6 +81,8 @@ pub const State = struct {
         scx: u8,
         /// LCD Y coordinate, the current line that is being drawn in the ppu.
         ly: u8,
+        /// OAM DMA source address and start.
+        dma: u8,
         /// Background palette data.
         bgp: packed struct(u8) {
             id0: u2,
@@ -92,19 +91,9 @@ pub const State = struct {
             id3: u2,
         },
         /// Object palette data 0.
-        obp0: packed struct(u8) {
-            _: u2 = 0,
-            id1: u2,
-            id2: u2,
-            id3: u2,
-        },
+        obp0: ppu.ObjectPalette,
         /// Object palette data 1.
-        obp1: packed struct(u8) {
-            _: u2 = 0,
-            id1: u2,
-            id2: u2,
-            id3: u2,
-        },
+        obp1: ppu.ObjectPalette,
         /// Set to non-zero to disable boot ROM.
         boot_rom_finished: u8,
         /// Interrupt enable, controls whether the corresponding handler may be called.
@@ -137,6 +126,18 @@ pub const State = struct {
             .scheduled_ei = false,
             .registers = .{ .named16 = .{ .af = 0, .bc = 0, .de = 0, .hl = 0, .sp = 0, .pc = 0 } },
             .pending_cycles = 0,
+            .button_state = .{
+                .named = .{
+                    .right = 1,
+                    .left = 1,
+                    .up = 1,
+                    .down = 1,
+                    .a = 1,
+                    .b = 1,
+                    .select = 1,
+                    .start = 1,
+                },
+            },
 
             .boot_rom = dmg_boot_rom,
             .rom = null,
@@ -146,12 +147,8 @@ pub const State = struct {
             .hram = try allocator.create([0x7f]u8),
             .io_registers = .{
                 .joyp = .{
-                    .a_right = 1,
-                    .b_left = 1,
-                    .select_up = 1,
-                    .start_down = 1,
-                    .select_d_pad = 1,
-                    .select_buttons = 1,
+                    .select_d_pad = false,
+                    .select_buttons = false,
                 },
                 .intf = .{
                     .v_blank = false,
@@ -179,6 +176,7 @@ pub const State = struct {
                     .id2 = 0,
                     .id3 = 0,
                 },
+                .dma = 0,
                 .obp0 = .{
                     .id1 = 0,
                     .id2 = 0,
@@ -250,7 +248,46 @@ const RegisterFile = extern union {
     ) !void {
         try writer.beginObject();
 
-        inline for (@typeInfo(RegisterFile).@"union".fields) |unionField| {
+        inline for (@typeInfo(@This()).@"union".fields) |unionField| {
+            try writer.objectField(unionField.name);
+            try writer.beginObject();
+
+            inline for (@typeInfo(unionField.type).@"struct".fields) |field| {
+                try writer.objectField(field.name);
+                try writer.write(@field(@field(self, unionField.name), field.name));
+            }
+
+            try writer.endObject();
+        }
+
+        try writer.endObject();
+    }
+};
+
+/// Tracks the state of which buttons are being pressed.
+const ButtonState = packed union {
+    nibbles: packed struct(u8) {
+        d_pad: u4,
+        buttons: u4,
+    },
+    named: packed struct(u8) {
+        right: u1,
+        left: u1,
+        up: u1,
+        down: u1,
+        a: u1,
+        b: u1,
+        select: u1,
+        start: u1,
+    },
+
+    pub fn jsonStringify(
+        self: @This(),
+        writer: anytype,
+    ) !void {
+        try writer.beginObject();
+
+        inline for (@typeInfo(@This()).@"union".fields) |unionField| {
             try writer.objectField(unionField.name);
             try writer.beginObject();
 
@@ -268,7 +305,7 @@ const RegisterFile = extern union {
 
 /// One of the possible buttons that can be pressed.
 /// `u8` instead of `u3` since it needs to be extern compatible.
-pub const Button = enum(u8) { up, down, left, right, start, select, a, b };
+pub const Button = enum(u8) { right, left, up, down, a, b, select, start };
 
 test "RegisterFile get" {
     const registers = RegisterFile{ .named16 = .{ .af = 0x1234, .bc = 0, .de = 0, .hl = 0xbeef, .sp = 0, .pc = 0 } };

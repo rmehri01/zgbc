@@ -44,7 +44,7 @@ const Object = packed struct(u32) {
         /// (CGB only) Which VRAM bank to fetch from.
         bank: u1,
         /// (non-CGB only) Which of OBP0-1 to use.
-        dmg_palette: bool,
+        dmg_palette: u1,
         /// Horizontally mirror the object.
         x_flip: bool,
         /// Vertically mirror the object.
@@ -52,6 +52,14 @@ const Object = packed struct(u32) {
         /// Whether the object is above or below the background and window.
         priority: enum(u1) { above = 0, below = 1 },
     },
+};
+
+/// Same as the normal palette except 0 is unused since it's transparent.
+pub const ObjectPalette = packed struct(u8) {
+    _: u2 = 0,
+    id1: u2,
+    id2: u2,
+    id3: u2,
 };
 
 /// Execute a single step of the ppu.
@@ -81,6 +89,8 @@ pub fn step(gb: *gameboy.State) void {
                 if (gb.io_registers.ly == 144) {
                     gb.mode = .v_blank;
                     gb.io_registers.intf.v_blank = true;
+                    // TODO: separate buffer?
+                    // gb.pixels.* = [_]Pixel{colors[0]} ** (144 * 160);
                 } else {
                     gb.mode = .oam_scan;
                 }
@@ -145,6 +155,64 @@ fn render_line(gb: *gameboy.State) void {
                 3 => gb.io_registers.bgp.id3,
             };
             gb.pixels[@as(u16, gb.io_registers.ly) * 160 + x_pixel_off] = colors[color_id];
+        }
+    }
+
+    if (gb.io_registers.lcdc.obj_enable) {
+        var obj_addr: memory.Addr = memory.OAM_START;
+        while (obj_addr < memory.OAM_START + 0xa0) : (obj_addr += @sizeOf(Object)) {
+            // TODO: clean up
+            const object: Object = @bitCast(gb.oam[obj_addr - memory.OAM_START .. obj_addr - memory.OAM_START + @sizeOf(Object)][0..@sizeOf(Object)].*);
+
+            // TODO: naive
+            // TODO: height not always 8
+            if (object.y_pos <= y_pixel + 16 and y_pixel + 16 < object.y_pos + 8) {
+                const palette = switch (object.flags.dmg_palette) {
+                    0 => gb.io_registers.obp0,
+                    1 => gb.io_registers.obp1,
+                };
+
+                const tile_id = object.tile_id;
+
+                // TODO: handle flip and priority
+
+                for (0..8) |x_pixel_off| {
+                    const x_pixel = object.x_pos +% x_pixel_off -% 8;
+
+                    if (x_pixel_start <= x_pixel and
+                        x_pixel < x_pixel_start + 160)
+                    {
+                        // TODO: duplicated
+                        var tile_addr = switch (gb.io_registers.lcdc.bg_window_tile_data_area) {
+                            .signed => value: {
+                                const offset: i8 = @bitCast(tile_id);
+                                break :value if (offset < 0)
+                                    data_area_start - @abs(offset)
+                                else
+                                    data_area_start + @abs(offset);
+                            },
+                            .unsigned => data_area_start + @as(u16, tile_id) * 16,
+                        };
+
+                        tile_addr += (y_pixel % 8) * 2;
+
+                        const tile_data1 = gb.vram[tile_addr - memory.VRAM_START];
+                        const tile_data2 = gb.vram[tile_addr + 1 - memory.VRAM_START];
+
+                        const lo = tile_data1 & (@as(u8, 0x80) >> @intCast(x_pixel % 8)) != 0;
+                        const hi = tile_data2 & (@as(u8, 0x80) >> @intCast(x_pixel % 8)) != 0;
+
+                        const palette_id = @as(u2, @intFromBool(hi)) << 1 | @intFromBool(lo);
+                        const color_id = switch (palette_id) {
+                            0 => continue,
+                            1 => palette.id1,
+                            2 => palette.id2,
+                            3 => palette.id3,
+                        };
+                        gb.pixels[@as(u16, gb.io_registers.ly) * 160 + x_pixel - x_pixel_start] = colors[color_id];
+                    }
+                }
+            }
         }
     }
 }

@@ -21,14 +21,14 @@ interface ZgbcRaw {
 }
 
 export enum Button {
+  Right,
+  Left,
   Up,
   Down,
-  Left,
-  Right,
-  Start,
-  Select,
   A,
   B,
+  Select,
+  Start,
 }
 
 /** The main interface for interacting with zgbc.wasm. */

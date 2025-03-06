@@ -87,12 +87,21 @@ fn read_not_usable(gb: *gameboy.State, addr: Addr) u8 {
 
 fn read_io_registers(gb: *gameboy.State, addr: Addr) u8 {
     return switch (addr) {
-        0xff00 => @bitCast(gb.io_registers.joyp),
+        0xff00 => value: {
+            const nibble = if (gb.io_registers.joyp.select_d_pad)
+                gb.button_state.nibbles.d_pad
+            else if (gb.io_registers.joyp.select_buttons)
+                gb.button_state.nibbles.buttons
+            else
+                0xf;
+            break :value @as(u8, 0xf) << 4 | nibble;
+        },
         0xff0f => @bitCast(gb.io_registers.intf),
         0xff40 => @bitCast(gb.io_registers.lcdc),
         0xff42 => gb.io_registers.scy,
         0xff43 => gb.io_registers.scx,
         0xff44 => gb.io_registers.ly,
+        0xff46 => gb.io_registers.dma,
         0xff47 => @bitCast(gb.io_registers.bgp),
         0xff48 => @bitCast(gb.io_registers.obp0),
         0xff49 => @bitCast(gb.io_registers.obp1),
@@ -140,7 +149,7 @@ fn write_mbc_rom(gb: *gameboy.State, addr: Addr, value: u8) void {
     _ = gb;
     _ = addr;
     _ = value;
-    @panic("unimplemented");
+    // @panic("unimplemented");
 }
 
 fn write_vram(gb: *gameboy.State, addr: Addr, value: u8) void {
@@ -151,7 +160,7 @@ fn write_mbc_ram(gb: *gameboy.State, addr: Addr, value: u8) void {
     _ = gb;
     _ = addr;
     _ = value;
-    @panic("unimplemented");
+    // @panic("unimplemented");
 }
 
 fn write_ram(gb: *gameboy.State, addr: Addr, value: u8) void {
@@ -175,10 +184,19 @@ fn write_not_usable(gb: *gameboy.State, addr: Addr, value: u8) void {
 
 fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
     switch (addr) {
-        0xff00 => gb.io_registers.joyp = @bitCast(value & 0x30),
+        0xff00 => gb.io_registers.joyp = @bitCast(~@as(u2, @truncate(value >> 4))),
         0xff40 => gb.io_registers.lcdc = @bitCast(value),
         0xff42 => gb.io_registers.scy = value,
         0xff43 => gb.io_registers.scx = value,
+        0xff46 => {
+            gb.io_registers.dma = value;
+            // TODO: naive
+            const start: Addr = @as(u16, value) << 8;
+            for (start..start + 0xa0) |a| {
+                const byte = readByte(gb, @intCast(a));
+                gb.oam[a - start] = byte;
+            }
+        },
         0xff47 => gb.io_registers.bgp = @bitCast(value),
         0xff48 => gb.io_registers.obp0 = @bitCast(value),
         0xff49 => gb.io_registers.obp1 = @bitCast(value),
