@@ -24,6 +24,7 @@ export fn deinit(gb: *gameboy.State) void {
 }
 
 export fn loadROM(gb: *gameboy.State, ptr: [*]u8, len: u32) void {
+    // TODO: read header? mbc type?
     gb.rom = ptr[0..len];
 }
 

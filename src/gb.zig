@@ -103,12 +103,30 @@ pub const State = struct {
             /// Whether the LCD is on and the PPU is active.
             lcd_enable: bool,
         },
+        /// LCD status
+        stat: packed struct(u8) {
+            /// The current rendering mode the ppu is in.
+            mode: ppu.Mode,
+            /// Set when `ly` contains the same value as `lyc`.
+            lyc_eq: bool,
+            /// If set, selects the h_blank (mode 0) condition for the STAT interrupt.
+            h_blank_int_select: bool,
+            /// If set, selects the v_blank (mode 1) condition for the STAT interrupt.
+            v_blank_int_select: bool,
+            /// If set, selects the oam_scan (mode 2) condition for the STAT interrupt.
+            oam_scan_int_select: bool,
+            /// If set, selects the lyc condition for the STAT interrupt.
+            lyc_int_select: bool,
+            _: u1 = 1,
+        },
         /// Background viewport Y position.
         scy: u8,
         /// Background viewport X position.
         scx: u8,
         /// LCD Y coordinate, the current line that is being drawn in the ppu.
         ly: u8,
+        /// LY compare, when enabled in `stat` and is equal to `ly` a STAT interrupt is requested.
+        lyc: u8,
         /// OAM DMA source address and start.
         dma: u8,
         /// Background palette data.
@@ -122,8 +140,8 @@ pub const State = struct {
         obp0: ppu.ObjectPalette,
         /// Object palette data 1.
         obp1: ppu.ObjectPalette,
-        /// Set to non-zero to disable boot ROM.
-        boot_rom_finished: u8,
+        /// Set to non-zero to disable boot ROM, cannot be unset.
+        boot_rom_finished: bool,
         /// Interrupt enable, controls whether the corresponding handler may be called.
         /// This isn't actually part of the io register range but conceptually it is.
         ie: packed struct(u8) {
@@ -136,12 +154,10 @@ pub const State = struct {
         },
     },
 
-    /// The current rendering mode the ppu is in.
-    mode: ppu.Mode,
     /// The number of horizontal time units that have passed in the ppu.
     dots: u16,
     /// The pixels corresponding to the current state of the display.
-    pixels: *[144 * 160]ppu.Pixel,
+    pixels: *[ppu.SCREEN_WIDTH * ppu.SCREEN_HEIGHT]ppu.Pixel,
 
     pub fn tick(self: *@This()) void {
         // TODO: naive
@@ -207,9 +223,18 @@ pub const State = struct {
                     .window_tile_map_area = 0,
                     .lcd_enable = false,
                 },
+                .stat = .{
+                    .mode = .oam_scan,
+                    .lyc_eq = false,
+                    .h_blank_int_select = false,
+                    .v_blank_int_select = false,
+                    .oam_scan_int_select = false,
+                    .lyc_int_select = false,
+                },
                 .scy = 0,
                 .scx = 0,
                 .ly = 0,
+                .lyc = 0,
                 .bgp = .{
                     .id0 = 0,
                     .id1 = 0,
@@ -227,7 +252,7 @@ pub const State = struct {
                     .id2 = 0,
                     .id3 = 0,
                 },
-                .boot_rom_finished = 0,
+                .boot_rom_finished = false,
                 .ie = .{
                     .v_blank = false,
                     .lcd = false,
@@ -237,9 +262,8 @@ pub const State = struct {
                 },
             },
 
-            .mode = .oam_scan,
             .dots = 0,
-            .pixels = try allocator.create([144 * 160]ppu.Pixel),
+            .pixels = try allocator.create([ppu.SCREEN_WIDTH * ppu.SCREEN_HEIGHT]ppu.Pixel),
         };
     }
 

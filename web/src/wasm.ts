@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import init from "../../zig-out/bin/zgbc.wasm?init";
 
 export const SCREEN_WIDTH = 160;
-export const SCREEN_HEIGHT = 140;
+export const SCREEN_HEIGHT = 144;
 
 type GameboyPtr = number;
 

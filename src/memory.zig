@@ -37,7 +37,7 @@ pub fn readByte(gb: *gameboy.State, addr: Addr) u8 {
 }
 
 fn read_rom(gb: *gameboy.State, addr: Addr) u8 {
-    if (gb.io_registers.boot_rom_finished == 0 and addr < 0x100) {
+    if (!gb.io_registers.boot_rom_finished and addr < 0x100) {
         return gb.boot_rom[addr];
     }
 
@@ -82,7 +82,8 @@ fn read_not_usable(gb: *gameboy.State, addr: Addr) u8 {
     _ = gb; // autofix
     _ = addr; // autofix
     // TODO: oam corruption
-    return 0;
+    // return 0;
+    @panic("unimplemented");
 }
 
 fn read_io_registers(gb: *gameboy.State, addr: Addr) u8 {
@@ -104,14 +105,16 @@ fn read_io_registers(gb: *gameboy.State, addr: Addr) u8 {
         0xff07 => @bitCast(gb.io_registers.tac),
         0xff0f => @bitCast(gb.io_registers.intf),
         0xff40 => @bitCast(gb.io_registers.lcdc),
+        0xff41 => @bitCast(gb.io_registers.stat),
         0xff42 => gb.io_registers.scy,
         0xff43 => gb.io_registers.scx,
         0xff44 => gb.io_registers.ly,
+        0xff45 => gb.io_registers.lyc,
         0xff46 => gb.io_registers.dma,
         0xff47 => @bitCast(gb.io_registers.bgp),
         0xff48 => @bitCast(gb.io_registers.obp0),
         0xff49 => @bitCast(gb.io_registers.obp1),
-        0xff50 => gb.io_registers.boot_rom_finished,
+        0xff50 => @as(u8, 0xfe) | @intFromBool(gb.io_registers.boot_rom_finished),
         else => 0xff,
     };
 }
@@ -128,8 +131,7 @@ fn read_ie(gb: *gameboy.State) u8 {
 /// to the correct handler.
 pub fn writeByte(gb: *gameboy.State, addr: Addr, value: u8) void {
     return switch (addr) {
-        0x0000...0x3fff => write_rom(gb, addr, value),
-        0x4000...0x7fff => write_mbc_rom(gb, addr, value),
+        0x0000...0x7fff => write_mbc_rom(gb, addr, value),
         0x8000...0x9fff => write_vram(gb, addr, value),
         0xa000...0xbfff => write_mbc_ram(gb, addr, value),
         0xc000...0xcfff => write_ram(gb, addr, value),
@@ -142,13 +144,6 @@ pub fn writeByte(gb: *gameboy.State, addr: Addr, value: u8) void {
         0xff80...0xfffe => write_hram(gb, addr, value),
         0xffff => write_ie(gb, value),
     };
-}
-
-fn write_rom(gb: *gameboy.State, addr: Addr, value: u8) void {
-    _ = gb;
-    _ = addr;
-    _ = value;
-    // @panic("unimplemented");
 }
 
 fn write_mbc_rom(gb: *gameboy.State, addr: Addr, value: u8) void {
@@ -197,8 +192,10 @@ fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
         0xff07 => gb.io_registers.tac = @bitCast(value & 0b111),
         0xff0f => gb.io_registers.intf = @bitCast(value & 0b11111),
         0xff40 => gb.io_registers.lcdc = @bitCast(value),
+        0xff41 => gb.io_registers.stat = @bitCast(value & 0x7f),
         0xff42 => gb.io_registers.scy = value,
         0xff43 => gb.io_registers.scx = value,
+        0xff45 => gb.io_registers.lyc = value,
         0xff46 => {
             gb.io_registers.dma = value;
             // TODO: naive
@@ -211,7 +208,10 @@ fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
         0xff47 => gb.io_registers.bgp = @bitCast(value),
         0xff48 => gb.io_registers.obp0 = @bitCast(value),
         0xff49 => gb.io_registers.obp1 = @bitCast(value),
-        0xff50 => gb.io_registers.boot_rom_finished = value,
+        0xff50 => {
+            gb.io_registers.boot_rom_finished =
+                gb.io_registers.boot_rom_finished or value != 0;
+        },
         else => {},
     }
 }

@@ -7,7 +7,7 @@ export default function Display({ zgbc }: { zgbc: Zgbc | null }) {
   const draw = (ctx: CanvasRenderingContext2D) => {
     if (!zgbc) return;
 
-    for (let i = 0; i < 10000; i++) {
+    for (let i = 0; i < 15000; i++) {
       zgbc.step();
     }
     const imageData = new ImageData(
