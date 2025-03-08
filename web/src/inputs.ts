@@ -15,20 +15,20 @@ const KEY_BUTTON_MAP: Record<string, Button> = {
 export function useSetupInputs(zgbc: Zgbc | null) {
   useEffect(() => {
     window.onkeydown = (e) => {
-      e.preventDefault();
       if (e.repeat) return;
 
       const button = KEY_BUTTON_MAP[e.code];
       if (button !== undefined) {
+        e.preventDefault();
         zgbc?.buttonPress(button);
       }
     };
     window.onkeyup = (e) => {
-      e.preventDefault();
       if (e.repeat) return;
 
       const button = KEY_BUTTON_MAP[e.code];
       if (button !== undefined) {
+        e.preventDefault();
         zgbc?.buttonRelease(button);
       }
     };

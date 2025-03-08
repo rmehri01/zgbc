@@ -4,8 +4,8 @@ const allocator = std.heap.wasm_allocator;
 const zgbc = @import("root.zig");
 const cpu = zgbc.cpu;
 const gameboy = zgbc.gameboy;
-const memory = zgbc.memory;
 const ppu = zgbc.ppu;
+const joypad = zgbc.joypad;
 
 export fn allocUint8Array(len: u32) [*]const u8 {
     const slice = allocator.alloc(u8, len) catch
@@ -29,34 +29,16 @@ export fn loadROM(gb: *gameboy.State, ptr: [*]u8, len: u32) void {
 
 export fn step(gb: *gameboy.State) void {
     cpu.step(gb);
-    // TODO: this should be inside tick
-    ppu.step(gb);
-    gb.pending_cycles = 0;
-
-    if (gb.ime) {
-        if (gb.io_registers.ie.v_blank and gb.io_registers.intf.v_blank) {
-            gb.io_registers.intf.v_blank = false;
-            gb.ime = false;
-            cpu.rst(gb, 8);
-        }
-    }
-
-    ppu.step(gb);
-    gb.pending_cycles = 0;
 }
 
 export fn pixels(gb: *gameboy.State) [*]ppu.Pixel {
     return gb.pixels;
 }
 
-export fn buttonPress(gb: *gameboy.State, button: gameboy.Button) void {
-    switch (button) {
-        inline else => |b| @field(gb.button_state.named, @tagName(b)) = 0,
-    }
+export fn buttonPress(gb: *gameboy.State, button: joypad.Button) void {
+    joypad.press(gb, button);
 }
 
-export fn buttonRelease(gb: *gameboy.State, button: gameboy.Button) void {
-    switch (button) {
-        inline else => |b| @field(gb.button_state.named, @tagName(b)) = 1,
-    }
+export fn buttonRelease(gb: *gameboy.State, button: joypad.Button) void {
+    joypad.release(gb, button);
 }

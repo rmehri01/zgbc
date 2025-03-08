@@ -3,7 +3,9 @@ const assert = std.debug.assert;
 const testing = std.testing;
 
 const cpu = @import("cpu.zig");
+const joypad = @import("joypad.zig");
 const ppu = @import("ppu.zig");
+const timer = @import("timer.zig");
 
 const dmg_boot_rom = @embedFile("boot/dmg.bin");
 
@@ -12,6 +14,8 @@ pub const State = struct {
     /// Interrupt Master Enable, enables the jump to the interrupt vectors,
     /// not whether interrupts are enabled or disabled.
     ime: bool,
+    /// Whether the cpu is halted and waiting for an interrupt.
+    halted: bool,
     /// The ei instruction has a delayed effect that will enable interrupt
     /// handling after one machine cycle.
     scheduled_ei: bool,
@@ -20,7 +24,14 @@ pub const State = struct {
     /// The number of t-cycles that are pending.
     pending_cycles: u8,
     /// Which buttons are currently being pressed, 0 means pressed.
-    button_state: ButtonState,
+    button_state: joypad.ButtonState,
+
+    /// Accumulator for the clock state that feeds into div and tima.
+    acc_clock: u8,
+    /// The clock used to increment the div io register.
+    div_clock: u8,
+    /// The clock used to increment the tima io register.
+    tima_clock: u8,
 
     /// The boot ROM to use when starting up.
     boot_rom: []const u8,
@@ -39,9 +50,26 @@ pub const State = struct {
         /// Joypad as a 2x4 matrix with two selectors into the `button_state`.
         joyp: packed struct(u2) {
             /// If 0, the buttons SsBA can be read from the lower nibble.
-            select_d_pad: bool,
+            select_d_pad: u1,
             /// If 0, the directional keys can be read from the lower nibble.
-            select_buttons: bool,
+            select_buttons: u1,
+        },
+        /// Divider register.
+        div: u8,
+        /// Timer counter.
+        tima: u8,
+        /// Timer modulo.
+        tma: u8,
+        /// Timer control.
+        tac: packed struct(u8) {
+            speed: enum(u2) {
+                hz4096 = 0b00,
+                hz262144 = 0b01,
+                hz65536 = 0b10,
+                hz16384 = 0b11,
+            },
+            running: bool,
+            _: u5 = 1,
         },
         /// Interrupt flag, indicates whether the corresponding handler is being requested.
         intf: packed struct(u8) {
@@ -50,7 +78,7 @@ pub const State = struct {
             timer: bool,
             serial: bool,
             joypad: bool,
-            _: u3 = 0,
+            _: u3 = 1,
         },
         /// LCD control register.
         lcdc: packed struct(u8) {
@@ -117,12 +145,13 @@ pub const State = struct {
 
     pub fn tick(self: *@This()) void {
         // TODO: naive
-        self.pending_cycles += 4;
+        self.pending_cycles += timer.T_CYCLES_PER_M_CYCLE;
     }
 
     pub fn init(allocator: std.mem.Allocator) !@This() {
         return @This(){
             .ime = false,
+            .halted = false,
             .scheduled_ei = false,
             .registers = .{ .named16 = .{ .af = 0, .bc = 0, .de = 0, .hl = 0, .sp = 0, .pc = 0 } },
             .pending_cycles = 0,
@@ -139,6 +168,10 @@ pub const State = struct {
                 },
             },
 
+            .acc_clock = 0,
+            .div_clock = 0,
+            .tima_clock = 0,
+
             .boot_rom = dmg_boot_rom,
             .rom = null,
             .vram = try allocator.create([0x2000]u8),
@@ -147,8 +180,15 @@ pub const State = struct {
             .hram = try allocator.create([0x7f]u8),
             .io_registers = .{
                 .joyp = .{
-                    .select_d_pad = false,
-                    .select_buttons = false,
+                    .select_d_pad = 1,
+                    .select_buttons = 1,
+                },
+                .div = 0,
+                .tima = 0,
+                .tma = 0,
+                .tac = .{
+                    .speed = .hz4096,
+                    .running = false,
                 },
                 .intf = .{
                     .v_blank = false,
@@ -263,49 +303,6 @@ const RegisterFile = extern union {
         try writer.endObject();
     }
 };
-
-/// Tracks the state of which buttons are being pressed.
-const ButtonState = packed union {
-    nibbles: packed struct(u8) {
-        d_pad: u4,
-        buttons: u4,
-    },
-    named: packed struct(u8) {
-        right: u1,
-        left: u1,
-        up: u1,
-        down: u1,
-        a: u1,
-        b: u1,
-        select: u1,
-        start: u1,
-    },
-
-    pub fn jsonStringify(
-        self: @This(),
-        writer: anytype,
-    ) !void {
-        try writer.beginObject();
-
-        inline for (@typeInfo(@This()).@"union".fields) |unionField| {
-            try writer.objectField(unionField.name);
-            try writer.beginObject();
-
-            inline for (@typeInfo(unionField.type).@"struct".fields) |field| {
-                try writer.objectField(field.name);
-                try writer.write(@field(@field(self, unionField.name), field.name));
-            }
-
-            try writer.endObject();
-        }
-
-        try writer.endObject();
-    }
-};
-
-/// One of the possible buttons that can be pressed.
-/// `u8` instead of `u3` since it needs to be extern compatible.
-pub const Button = enum(u8) { right, left, up, down, a, b, select, start };
 
 test "RegisterFile get" {
     const registers = RegisterFile{ .named16 = .{ .af = 0x1234, .bc = 0, .de = 0, .hl = 0xbeef, .sp = 0, .pc = 0 } };

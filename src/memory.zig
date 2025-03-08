@@ -88,14 +88,20 @@ fn read_not_usable(gb: *gameboy.State, addr: Addr) u8 {
 fn read_io_registers(gb: *gameboy.State, addr: Addr) u8 {
     return switch (addr) {
         0xff00 => value: {
-            const nibble = if (gb.io_registers.joyp.select_d_pad)
+            const nibble = if (gb.io_registers.joyp.select_d_pad == 0)
                 gb.button_state.nibbles.d_pad
-            else if (gb.io_registers.joyp.select_buttons)
+            else if (gb.io_registers.joyp.select_buttons == 0)
                 gb.button_state.nibbles.buttons
             else
                 0xf;
-            break :value @as(u8, 0xf) << 4 | nibble;
+            break :value @as(u8, 0b11) << 6 |
+                @as(u8, @as(u2, @bitCast(gb.io_registers.joyp))) << 4 |
+                nibble;
         },
+        0xff04 => gb.io_registers.div,
+        0xff05 => gb.io_registers.tima,
+        0xff06 => gb.io_registers.tma,
+        0xff07 => @bitCast(gb.io_registers.tac),
         0xff0f => @bitCast(gb.io_registers.intf),
         0xff40 => @bitCast(gb.io_registers.lcdc),
         0xff42 => gb.io_registers.scy,
@@ -184,7 +190,12 @@ fn write_not_usable(gb: *gameboy.State, addr: Addr, value: u8) void {
 
 fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
     switch (addr) {
-        0xff00 => gb.io_registers.joyp = @bitCast(~@as(u2, @truncate(value >> 4))),
+        0xff00 => gb.io_registers.joyp = @bitCast(@as(u2, @truncate(value >> 4))),
+        0xff04 => gb.io_registers.div = 0,
+        0xff05 => gb.io_registers.tima = value,
+        0xff06 => gb.io_registers.tma = value,
+        0xff07 => gb.io_registers.tac = @bitCast(value & 0b111),
+        0xff0f => gb.io_registers.intf = @bitCast(value & 0b11111),
         0xff40 => gb.io_registers.lcdc = @bitCast(value),
         0xff42 => gb.io_registers.scy = value,
         0xff43 => gb.io_registers.scx = value,

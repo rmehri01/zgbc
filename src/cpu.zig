@@ -3,6 +3,8 @@ const testing = std.testing;
 
 const gameboy = @import("gb.zig");
 const memory = @import("memory.zig");
+const ppu = @import("ppu.zig");
+const timer = @import("timer.zig");
 
 /// Contains information about the result of the most recent CPU
 /// instruction that has affected flags.
@@ -18,8 +20,66 @@ pub const Flags = packed struct(u8) {
     z: bool,
 };
 
-/// Fetch, decode, and execute a single CPU instruction.
+/// Execute a single step of the cpu.
 pub fn step(gb: *gameboy.State) void {
+    fetch_execute(gb);
+    // TODO: this should be inside tick
+    ppu.step(gb);
+    timer.step(gb);
+    gb.pending_cycles = 0;
+
+    if (gb.halted and
+        !gb.ime and
+        ((gb.io_registers.ie.v_blank and gb.io_registers.intf.v_blank) or
+            (gb.io_registers.ie.lcd and gb.io_registers.intf.lcd) or
+            (gb.io_registers.ie.timer and gb.io_registers.intf.timer) or
+            (gb.io_registers.ie.serial and gb.io_registers.intf.serial) or
+            (gb.io_registers.ie.joypad and gb.io_registers.intf.joypad)))
+    {
+        gb.halted = false;
+    }
+
+    if (gb.ime) {
+        if (gb.io_registers.ie.v_blank and gb.io_registers.intf.v_blank) {
+            gb.halted = false;
+            gb.io_registers.intf.v_blank = false;
+            gb.ime = false;
+            rst(gb, 0x40);
+        } else if (gb.io_registers.ie.lcd and gb.io_registers.intf.lcd) {
+            gb.halted = false;
+            gb.io_registers.intf.lcd = false;
+            gb.ime = false;
+            rst(gb, 0x48);
+        } else if (gb.io_registers.ie.timer and gb.io_registers.intf.timer) {
+            gb.halted = false;
+            gb.io_registers.intf.timer = false;
+            gb.ime = false;
+            rst(gb, 0x50);
+        } else if (gb.io_registers.ie.serial and gb.io_registers.intf.serial) {
+            gb.halted = false;
+            gb.io_registers.intf.serial = false;
+            gb.ime = false;
+            rst(gb, 0x58);
+        } else if (gb.io_registers.ie.joypad and gb.io_registers.intf.joypad) {
+            gb.halted = false;
+            gb.io_registers.intf.joypad = false;
+            gb.ime = false;
+            rst(gb, 0x60);
+        }
+    }
+
+    ppu.step(gb);
+    timer.step(gb);
+    gb.pending_cycles = 0;
+}
+
+/// Fetch, decode, and execute a single CPU instruction.
+fn fetch_execute(gb: *gameboy.State) void {
+    if (gb.halted) {
+        gb.tick();
+        return;
+    }
+
     // If the scheduled `ei` instruction wasn't cancelled, then enable
     // interrupt handling after the next instruction runs.
     const scheduled_ei = gb.scheduled_ei;
@@ -185,7 +245,7 @@ pub fn step(gb: *gameboy.State) void {
         0xc4 => call_cc_a16(gb, !gb.registers.named8.f.z),
         0xc5 => push_rr(gb, &gb.registers.named16.bc),
         0xc6 => add_a_d8(gb),
-        0xc7 => rst(gb, 0),
+        0xc7 => rst(gb, 0x00),
         0xc8 => ret_cc(gb, gb.registers.named8.f.z),
         0xc9 => ret(gb),
         0xca => jp_cc_a16(gb, gb.registers.named8.f.z),
@@ -193,7 +253,7 @@ pub fn step(gb: *gameboy.State) void {
         0xcc => call_cc_a16(gb, gb.registers.named8.f.z),
         0xcd => call_a16(gb),
         0xce => adc_a_d8(gb),
-        0xcf => rst(gb, 1),
+        0xcf => rst(gb, 0x08),
 
         0xd0 => ret_cc(gb, !gb.registers.named8.f.c),
         0xd1 => pop_rr(gb, &gb.registers.named16.de),
@@ -202,7 +262,7 @@ pub fn step(gb: *gameboy.State) void {
         0xd4 => call_cc_a16(gb, !gb.registers.named8.f.c),
         0xd5 => push_rr(gb, &gb.registers.named16.de),
         0xd6 => sub_a_d8(gb),
-        0xd7 => rst(gb, 2),
+        0xd7 => rst(gb, 0x10),
         0xd8 => ret_cc(gb, gb.registers.named8.f.c),
         0xd9 => reti(gb),
         0xda => jp_cc_a16(gb, gb.registers.named8.f.c),
@@ -210,7 +270,7 @@ pub fn step(gb: *gameboy.State) void {
         0xdc => call_cc_a16(gb, gb.registers.named8.f.c),
         0xdd => illegal(),
         0xde => sbc_a_d8(gb),
-        0xdf => rst(gb, 3),
+        0xdf => rst(gb, 0x18),
 
         0xe0 => ld_da8_a(gb),
         0xe1 => pop_rr(gb, &gb.registers.named16.hl),
@@ -219,7 +279,7 @@ pub fn step(gb: *gameboy.State) void {
         0xe4 => illegal(),
         0xe5 => push_rr(gb, &gb.registers.named16.hl),
         0xe6 => and_a_d8(gb),
-        0xe7 => rst(gb, 4),
+        0xe7 => rst(gb, 0x20),
         0xe8 => add_sp_s8(gb),
         0xe9 => jp_hl(gb),
         0xea => ld_da16_a(gb),
@@ -227,7 +287,7 @@ pub fn step(gb: *gameboy.State) void {
         0xec => illegal(),
         0xed => illegal(),
         0xee => xor_a_d8(gb),
-        0xef => rst(gb, 5),
+        0xef => rst(gb, 0x28),
 
         0xf0 => ld_a_da8(gb),
         0xf1 => {
@@ -241,7 +301,7 @@ pub fn step(gb: *gameboy.State) void {
         0xf4 => illegal(),
         0xf5 => push_rr(gb, &gb.registers.named16.af),
         0xf6 => or_a_d8(gb),
-        0xf7 => rst(gb, 6),
+        0xf7 => rst(gb, 0x30),
         0xf8 => ld_hl_sp_s8(gb),
         0xf9 => ld_sp_hl(gb),
         0xfa => ld_a_da16(gb),
@@ -249,7 +309,7 @@ pub fn step(gb: *gameboy.State) void {
         0xfc => illegal(),
         0xfd => illegal(),
         0xfe => cp_a_d8(gb),
-        0xff => rst(gb, 7),
+        0xff => rst(gb, 0x38),
     }
 }
 
@@ -546,7 +606,7 @@ fn ld_dhl_r(gb: *gameboy.State, r: *const u8) void {
 }
 
 fn halt(gb: *gameboy.State) void {
-    _ = gb;
+    gb.halted = true;
 }
 
 /// Add the contents of register `r` or the memory pointed to by `r` to the
@@ -678,10 +738,10 @@ fn add_a_d8(gb: *gameboy.State) void {
 }
 
 /// Push the current value of the program counter onto the memory stack, and
-/// load into `PC` the nth byte of page 0 memory addresses.
-pub fn rst(gb: *gameboy.State, comptime n: u8) void {
+/// load `addr` into `PC` memory addresses.
+pub fn rst(gb: *gameboy.State, comptime addr: memory.Addr) void {
     push_rr(gb, &gb.registers.named16.pc);
-    gb.registers.named16.pc = n * 0x08;
+    gb.registers.named16.pc = addr;
 }
 
 /// Pop from the memory stack the program counter value pushed when the
