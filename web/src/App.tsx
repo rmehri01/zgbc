@@ -7,14 +7,14 @@ import { useSetupInputs } from "./inputs";
 function App() {
   const zgbc = useZgbc();
 
-  useSetupInputs(zgbc);
+  const { checkGamepadInputs } = useSetupInputs(zgbc);
 
   return (
     <>
       <nav>
         <LoadROMButton zgbc={zgbc} />
       </nav>
-      <Display zgbc={zgbc} />
+      <Display zgbc={zgbc} checkGamepadInputs={checkGamepadInputs} />
     </>
   );
 }

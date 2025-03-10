@@ -1,7 +1,13 @@
 import { useEffect, useRef } from "react";
 import { SCREEN_HEIGHT, SCREEN_WIDTH, Zgbc } from "./wasm";
 
-export default function Display({ zgbc }: { zgbc: Zgbc | null }) {
+export default function Display({
+  zgbc,
+  checkGamepadInputs,
+}: {
+  zgbc: Zgbc | null;
+  checkGamepadInputs: (zgbc: Zgbc | null) => void;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const draw = (ctx: CanvasRenderingContext2D) => {
@@ -30,6 +36,7 @@ export default function Display({ zgbc }: { zgbc: Zgbc | null }) {
     let animationFrameId: number;
 
     const renderFrame = () => {
+      checkGamepadInputs(zgbc);
       draw(context);
       animationFrameId = window.requestAnimationFrame(renderFrame);
     };
