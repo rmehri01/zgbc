@@ -16,11 +16,21 @@ function App() {
       <nav>
         <LoadROMButton zgbc={zgbc} />
       </nav>
-      <Display
-        zgbc={zgbc}
-        checkGamepadInputs={checkGamepadInputs}
-        updateAudio={updateAudio}
-      />
+      <div className="display-container">
+        <Display
+          zgbc={zgbc}
+          checkGamepadInputs={checkGamepadInputs}
+          updateAudio={updateAudio}
+        />
+        <a
+          className="tm-text"
+          href="https://github.com/rmehri01/zgbc"
+          target="_blank"
+          rel="noreferrer"
+        >
+          zgbc
+        </a>
+      </div>
     </>
   );
 }
