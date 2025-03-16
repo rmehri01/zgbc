@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Button, Zgbc } from "./wasm";
 
 const KEY_BUTTON_MAP: Record<string, Button> = {
@@ -23,42 +23,43 @@ const GAMEPAD_BUTTON_MAP = new Map<number, Button>([
   [1, Button.A],
 ]);
 
-export function useSetupInputs(zgbc: Zgbc | null): {
-  checkGamepadInputs: (zgbc: Zgbc | null) => void;
-} {
-  const pressRight = usePressButton(zgbc, Button.Right);
-  const pressLeft = usePressButton(zgbc, Button.Left);
-  const pressUp = usePressButton(zgbc, Button.Up);
-  const pressDown = usePressButton(zgbc, Button.Down);
-  const pressA = usePressButton(zgbc, Button.A);
-  const pressB = usePressButton(zgbc, Button.B);
-  const pressSelect = usePressButton(zgbc, Button.Select);
-  const pressStart = usePressButton(zgbc, Button.Start);
+enum ButtonState {
+  unpressed,
+  pressed,
+}
 
-  const pressButtonMap: Record<
-    Button,
-    React.Dispatch<React.SetStateAction<boolean>>
-  > = useMemo(
-    () => ({
-      [Button.Right]: pressRight,
-      [Button.Left]: pressLeft,
-      [Button.Up]: pressUp,
-      [Button.Down]: pressDown,
-      [Button.A]: pressA,
-      [Button.B]: pressB,
-      [Button.Select]: pressSelect,
-      [Button.Start]: pressStart,
-    }),
-    [
-      pressRight,
-      pressLeft,
-      pressUp,
-      pressDown,
-      pressA,
-      pressB,
-      pressSelect,
-      pressStart,
-    ],
+export function useSetupInputs(zgbc: Zgbc | null): {
+  checkGamepadInputs: () => void;
+} {
+  const buttonStateMap = useRef<Record<Button, ButtonState>>({
+    [Button.Right]: ButtonState.unpressed,
+    [Button.Left]: ButtonState.unpressed,
+    [Button.Up]: ButtonState.unpressed,
+    [Button.Down]: ButtonState.unpressed,
+    [Button.A]: ButtonState.unpressed,
+    [Button.B]: ButtonState.unpressed,
+    [Button.Select]: ButtonState.unpressed,
+    [Button.Start]: ButtonState.unpressed,
+  });
+
+  const pressButton = useCallback(
+    (button: Button) => {
+      if (buttonStateMap.current[button] === ButtonState.unpressed) {
+        buttonStateMap.current[button] = ButtonState.pressed;
+        zgbc?.buttonPress(button);
+      }
+    },
+    [zgbc],
+  );
+
+  const releaseButton = useCallback(
+    (button: Button) => {
+      if (buttonStateMap.current[button] === ButtonState.pressed) {
+        buttonStateMap.current[button] = ButtonState.unpressed;
+        zgbc?.buttonRelease(button);
+      }
+    },
+    [zgbc],
   );
 
   useEffect(() => {
@@ -66,63 +67,40 @@ export function useSetupInputs(zgbc: Zgbc | null): {
       const button = KEY_BUTTON_MAP[e.code];
       if (button !== undefined) {
         e.preventDefault();
-
-        const pressButton = pressButtonMap[button];
-        pressButton(true);
+        pressButton(button);
       }
     };
     window.onkeyup = (e) => {
       const button = KEY_BUTTON_MAP[e.code];
       if (button !== undefined) {
         e.preventDefault();
-
-        const pressButton = pressButtonMap[button];
-        pressButton(false);
+        releaseButton(button);
       }
     };
-  }, [zgbc, pressButtonMap]);
+  }, [zgbc, pressButton, releaseButton]);
 
-  const [gamepad, setGamepad] = useState<Gamepad | null>(null);
+  const gamepad = useRef<Gamepad | null>(null);
 
   useEffect(() => {
     window.addEventListener("gamepadconnected", (e) => {
-      setGamepad(window.navigator.getGamepads()[e.gamepad.index]);
+      gamepad.current = window.navigator.getGamepads()[e.gamepad.index];
     });
     window.addEventListener("gamepaddisconnected", () => {
-      setGamepad(null);
+      gamepad.current = null;
     });
   }, [zgbc]);
 
   return {
-    checkGamepadInputs: (zgbc) => {
-      if (!gamepad || !zgbc) return;
+    checkGamepadInputs: () => {
+      if (!gamepad.current) return;
 
       for (const [idx, button] of GAMEPAD_BUTTON_MAP) {
-        const pressButton = pressButtonMap[button];
-
-        if (gamepad.buttons[idx].pressed) {
-          pressButton(true);
+        if (gamepad.current.buttons[idx].pressed) {
+          pressButton(button);
         } else {
-          pressButton(false);
+          releaseButton(button);
         }
       }
     },
   };
-}
-
-function usePressButton(
-  zgbc: Zgbc | null,
-  button: Button,
-): React.Dispatch<React.SetStateAction<boolean>> {
-  const [buttonPressed, setButtonPressed] = useState(false);
-
-  useEffect(() => {
-    if (buttonPressed) {
-      zgbc?.buttonPress(button);
-    } else {
-      zgbc?.buttonRelease(button);
-    }
-  }, [zgbc, buttonPressed, button]);
-
-  return setButtonPressed;
 }

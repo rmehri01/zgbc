@@ -1,5 +1,6 @@
 const std = @import("std");
 
+pub const apu = @import("apu.zig");
 pub const cpu = @import("cpu.zig");
 pub const gameboy = @import("gb.zig");
 pub const joypad = @import("joypad.zig");

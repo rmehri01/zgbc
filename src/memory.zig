@@ -1,7 +1,13 @@
+//! Memory interface for ROM, RAM, and memory mapped I/O.
+
 const std = @import("std");
 const testing = std.testing;
+const math = std.math;
+const mem = std.mem;
 
+const apu = @import("apu.zig");
 const gameboy = @import("gb.zig");
+const ppu = @import("ppu.zig");
 
 /// 16-bit address to index ROM, RAM, and I/O.
 pub const Addr = u16;
@@ -15,6 +21,395 @@ pub const TILE_MAP1_START = 0x9c00;
 pub const RAM_START = 0xc000;
 pub const OAM_START = 0xfe00;
 pub const HRAM_START = 0xff80;
+
+const dmg_boot_rom = @embedFile("boot/dmg.bin");
+
+/// Tracks the internal state of memory.
+pub const State = struct {
+    /// The boot ROM to use when starting up.
+    boot_rom: []const u8,
+    /// The cartridge that is currently loaded.
+    rom: ?[]const u8,
+    /// Video RAM.
+    vram: *[0x2000]u8,
+    /// Work RAM.
+    ram: *[0x2000]u8,
+    /// Object attribute memory.
+    oam: *[0xa0]u8,
+    /// High RAM.
+    hram: *[0x7f]u8,
+    /// Memory mapped I/O registers.
+    io: struct {
+        /// Joypad as a 2x4 matrix with two selectors into the `button_state`.
+        joyp: packed struct(u2) {
+            /// If 0, the buttons SsBA can be read from the lower nibble.
+            select_d_pad: u1,
+            /// If 0, the directional keys can be read from the lower nibble.
+            select_buttons: u1,
+        },
+        /// Divider register.
+        div: u8,
+        /// Timer counter.
+        tima: u8,
+        /// Timer modulo.
+        tma: u8,
+        /// Timer control.
+        tac: packed struct(u8) {
+            speed: enum(u2) {
+                hz4096 = 0b00,
+                hz262144 = 0b01,
+                hz65536 = 0b10,
+                hz16384 = 0b11,
+            },
+            running: bool,
+            _: u5 = math.maxInt(u5),
+        },
+        /// Interrupt flag, indicates whether the corresponding handler is being requested.
+        intf: packed struct(u8) {
+            v_blank: bool,
+            lcd: bool,
+            timer: bool,
+            serial: bool,
+            joypad: bool,
+            _: u3 = math.maxInt(u3),
+        },
+        /// Channel 1 sweep.
+        nr10: packed struct(u8) {
+            /// Used to compute the new period on each iteration.
+            step: u3,
+            /// Whether the period is increasing or decreasing (addition or subtraction).
+            direction: enum(u1) { increasing = 0, decreasing = 1 },
+            /// How often sweep iterations happen in units of 128Hz ticks.
+            pace: u3,
+            _: u1 = 1,
+        },
+        /// Channel 1 length timer and duty cycle.
+        nr11: apu.LengthTimerDutyCycle,
+        /// Channel 1 volume and envelope.
+        nr12: apu.VolumeEnvelope,
+        /// Channel 1 period low.
+        nr13: u8,
+        /// Channel 1 period high and control.
+        nr14: apu.PeriodHighControl,
+        /// Channel 2 length timer and duty cycle.
+        nr21: apu.LengthTimerDutyCycle,
+        /// Channel 2 volume and envelope.
+        nr22: apu.VolumeEnvelope,
+        /// Channel 2 period low.
+        nr23: u8,
+        /// Channel 2 period high and control.
+        nr24: apu.PeriodHighControl,
+        /// Channel 3 initial length timer.
+        nr31: u8,
+        /// Channel 3 output level.
+        nr32: enum(u2) {
+            mute = 0b00,
+            full = 0b01,
+            half = 0b10,
+            quarter = 0b11,
+        },
+        /// Channel 3 period low.
+        nr33: u8,
+        /// Channel 3 period high and control.
+        nr34: apu.PeriodHighControl,
+        /// Channel 4 initial length timer.
+        nr41: u6,
+        /// Channel 4 volume and envelope.
+        nr42: apu.VolumeEnvelope,
+        /// Channel 4 frequency and randomness.
+        nr43: packed struct(u8) {
+            clock_divider: u3,
+            lfsr_width: enum(u1) { bit15 = 0, bit7 = 1 },
+            clock_shift: u4,
+        },
+        /// Channel 4 control.
+        nr44: packed struct(u8) {
+            _: u6 = math.maxInt(u6),
+            /// Whether the length timer is enabled.
+            length_enable: bool,
+            /// Writing any value will trigger the channel.
+            trigger: bool,
+        },
+        /// Master volume and VIN panning.
+        nr50: packed struct(u8) {
+            volume_right: u3,
+            vin_right: bool,
+            volume_left: u3,
+            vin_left: bool,
+        },
+        /// Sound panning.
+        nr51: packed struct(u8) {
+            ch1_right: bool,
+            ch2_right: bool,
+            ch3_right: bool,
+            ch4_right: bool,
+            ch1_left: bool,
+            ch2_left: bool,
+            ch3_left: bool,
+            ch4_left: bool,
+        },
+        /// Audio master control.
+        nr52: packed struct(u8) {
+            /// Whether channel 1 is active.
+            ch1_on: bool,
+            /// Whether channel 2 is active.
+            ch2_on: bool,
+            /// Whether channel 3 is active.
+            ch3_on: bool,
+            /// Whether channel 4 is active.
+            ch4_on: bool,
+            _: u3 = math.maxInt(u3),
+            /// Whether the apu is powered on at all.
+            /// Turning this off will clear all APU registers and make them read-only.
+            enable: bool,
+        },
+        /// Wave pattern RAM.
+        wave_pattern_ram: [16]packed struct(u8) { lower: u4, upper: u4 },
+        /// LCD control register.
+        lcdc: packed struct(u8) {
+            /// (non-CGB only) When cleared, the background and window are blank.
+            /// (CGB only) When cleared, the background and window lose priority.
+            bg_window_enable_priority: bool,
+            /// Whether objects are displayed or not.
+            obj_enable: bool,
+            /// Controls the size of objects (1 or 2 tiles vertically).
+            obj_size: bool,
+            /// If the bit is clear, the background uses tilemap 0x9800, otherwise
+            /// tilemap 0x9c00.
+            bg_tile_map_area: u1,
+            /// If the bit is clear, the background and window use the 0x8800 method,
+            /// otherwise they use the 0x8000 method.
+            bg_window_tile_data_area: enum(u1) { signed = 0, unsigned = 1 },
+            /// Whether the window is displayed or not.
+            window_enable: bool,
+            /// If the bit is clear, the window uses tilemap 0x9800, otherwise
+            /// tilemap 0x9c00.
+            window_tile_map_area: u1,
+            /// Whether the LCD is on and the PPU is active.
+            lcd_enable: bool,
+        },
+        /// LCD status
+        stat: packed struct(u8) {
+            /// The current rendering mode the ppu is in.
+            mode: ppu.Mode,
+            /// Set when `ly` contains the same value as `lyc`.
+            lyc_eq: bool,
+            /// If set, selects the h_blank (mode 0) condition for the STAT interrupt.
+            h_blank_int_select: bool,
+            /// If set, selects the v_blank (mode 1) condition for the STAT interrupt.
+            v_blank_int_select: bool,
+            /// If set, selects the oam_scan (mode 2) condition for the STAT interrupt.
+            oam_scan_int_select: bool,
+            /// If set, selects the lyc condition for the STAT interrupt.
+            lyc_int_select: bool,
+            _: u1 = 1,
+        },
+        /// Background viewport Y position.
+        scy: u8,
+        /// Background viewport X position.
+        scx: u8,
+        /// LCD Y coordinate, the current line that is being drawn in the ppu.
+        ly: u8,
+        /// LY compare, when enabled in `stat` and is equal to `ly` a STAT interrupt is requested.
+        lyc: u8,
+        /// OAM DMA source address and start.
+        dma: u8,
+        /// Background palette data.
+        bgp: packed struct(u8) {
+            id0: u2,
+            id1: u2,
+            id2: u2,
+            id3: u2,
+        },
+        /// Object palette data 0.
+        obp0: ppu.ObjectPalette,
+        /// Object palette data 1.
+        obp1: ppu.ObjectPalette,
+        /// Set to non-zero to disable boot ROM, cannot be unset.
+        boot_rom_finished: bool,
+        /// Interrupt enable, controls whether the corresponding handler may be called.
+        /// This isn't actually part of the io register range but conceptually it is.
+        ie: packed struct(u8) {
+            v_blank: bool,
+            lcd: bool,
+            timer: bool,
+            serial: bool,
+            joypad: bool,
+            _: u3 = 0,
+        },
+    },
+
+    pub fn init(allocator: mem.Allocator) !@This() {
+        return @This(){
+            .boot_rom = dmg_boot_rom,
+            .rom = null,
+            .vram = try allocator.create([0x2000]u8),
+            .ram = try allocator.create([0x2000]u8),
+            .oam = try allocator.create([0xa0]u8),
+            .hram = try allocator.create([0x7f]u8),
+            .io = .{
+                .joyp = .{
+                    .select_d_pad = 1,
+                    .select_buttons = 1,
+                },
+                .div = 0,
+                .tima = 0,
+                .tma = 0,
+                .tac = .{
+                    .speed = .hz4096,
+                    .running = false,
+                },
+                .intf = .{
+                    .v_blank = false,
+                    .lcd = false,
+                    .timer = false,
+                    .serial = false,
+                    .joypad = false,
+                },
+                .nr10 = .{
+                    .step = 0,
+                    .direction = .increasing,
+                    .pace = 0,
+                },
+                .nr11 = .{
+                    .initial_length_timer = 0,
+                    .duty_cycle = .eighth,
+                },
+                .nr12 = .{
+                    .pace = 0,
+                    .envelope_direction = .decreasing,
+                    .initial_volume = 0,
+                },
+                .nr13 = 0,
+                .nr14 = .{
+                    .period = 0,
+                    .length_enable = false,
+                    .trigger = false,
+                },
+                .nr21 = .{
+                    .initial_length_timer = 0,
+                    .duty_cycle = .eighth,
+                },
+                .nr22 = .{
+                    .pace = 0,
+                    .envelope_direction = .decreasing,
+                    .initial_volume = 0,
+                },
+                .nr23 = 0,
+                .nr24 = .{
+                    .period = 0,
+                    .length_enable = false,
+                    .trigger = false,
+                },
+                .nr31 = 0,
+                .nr32 = .mute,
+                .nr33 = 0,
+                .nr34 = .{
+                    .period = 0,
+                    .length_enable = false,
+                    .trigger = false,
+                },
+                .nr41 = 0,
+                .nr42 = .{
+                    .pace = 0,
+                    .envelope_direction = .decreasing,
+                    .initial_volume = 0,
+                },
+                .nr43 = .{
+                    .clock_divider = 0,
+                    .lfsr_width = .bit15,
+                    .clock_shift = 0,
+                },
+                .nr44 = .{
+                    .length_enable = false,
+                    .trigger = false,
+                },
+                .nr50 = .{
+                    .volume_right = 0,
+                    .vin_right = false,
+                    .volume_left = 0,
+                    .vin_left = false,
+                },
+                .nr51 = .{
+                    .ch1_right = false,
+                    .ch2_right = false,
+                    .ch3_right = false,
+                    .ch4_right = false,
+                    .ch1_left = false,
+                    .ch2_left = false,
+                    .ch3_left = false,
+                    .ch4_left = false,
+                },
+                .nr52 = .{
+                    .ch1_on = false,
+                    .ch2_on = false,
+                    .ch3_on = false,
+                    .ch4_on = false,
+                    .enable = false,
+                },
+                .wave_pattern_ram = @bitCast([_]u8{ 0x00, 0xff } ** 8),
+                .lcdc = .{
+                    .bg_window_enable_priority = false,
+                    .obj_enable = false,
+                    .obj_size = false,
+                    .bg_tile_map_area = 0,
+                    .bg_window_tile_data_area = .signed,
+                    .window_enable = false,
+                    .window_tile_map_area = 0,
+                    .lcd_enable = false,
+                },
+                .stat = .{
+                    .mode = .oam_scan,
+                    .lyc_eq = false,
+                    .h_blank_int_select = false,
+                    .v_blank_int_select = false,
+                    .oam_scan_int_select = false,
+                    .lyc_int_select = false,
+                },
+                .scy = 0,
+                .scx = 0,
+                .ly = 0,
+                .lyc = 0,
+                .bgp = .{
+                    .id0 = 0,
+                    .id1 = 0,
+                    .id2 = 0,
+                    .id3 = 0,
+                },
+                .dma = 0,
+                .obp0 = .{
+                    .id1 = 0,
+                    .id2 = 0,
+                    .id3 = 0,
+                },
+                .obp1 = .{
+                    .id1 = 0,
+                    .id2 = 0,
+                    .id3 = 0,
+                },
+                .boot_rom_finished = false,
+                .ie = .{
+                    .v_blank = false,
+                    .lcd = false,
+                    .timer = false,
+                    .serial = false,
+                    .joypad = false,
+                },
+            },
+        };
+    }
+
+    pub fn deinit(self: @This(), allocator: mem.Allocator) void {
+        if (self.rom) |rom| {
+            allocator.free(rom);
+        }
+
+        allocator.destroy(self.vram);
+        allocator.destroy(self.ram);
+        allocator.destroy(self.oam);
+        allocator.destroy(self.hram);
+    }
+};
 
 /// Reads a single byte at the given `Addr`, delegating it
 /// to the correct handler.
@@ -37,11 +432,11 @@ pub fn readByte(gb: *gameboy.State, addr: Addr) u8 {
 }
 
 fn read_rom(gb: *gameboy.State, addr: Addr) u8 {
-    if (!gb.io_registers.boot_rom_finished and addr < 0x100) {
-        return gb.boot_rom[addr];
+    if (!gb.memory.io.boot_rom_finished and addr < 0x100) {
+        return gb.memory.boot_rom[addr];
     }
 
-    if (gb.rom) |rom| {
+    if (gb.memory.rom) |rom| {
         return rom[addr];
     }
 
@@ -49,7 +444,7 @@ fn read_rom(gb: *gameboy.State, addr: Addr) u8 {
 }
 
 fn read_mbc_rom(gb: *gameboy.State, addr: Addr) u8 {
-    if (gb.rom) |rom| {
+    if (gb.memory.rom) |rom| {
         return rom[addr];
     }
 
@@ -57,7 +452,7 @@ fn read_mbc_rom(gb: *gameboy.State, addr: Addr) u8 {
 }
 
 fn read_vram(gb: *gameboy.State, addr: Addr) u8 {
-    return gb.vram[addr - VRAM_START];
+    return gb.memory.vram[addr - VRAM_START];
 }
 
 fn read_mbc_ram(gb: *gameboy.State, addr: Addr) u8 {
@@ -67,15 +462,15 @@ fn read_mbc_ram(gb: *gameboy.State, addr: Addr) u8 {
 }
 
 fn read_ram(gb: *gameboy.State, addr: Addr) u8 {
-    return gb.ram[addr - RAM_START];
+    return gb.memory.ram[addr - RAM_START];
 }
 
 fn read_banked_ram(gb: *gameboy.State, addr: Addr) u8 {
-    return gb.ram[addr - RAM_START];
+    return gb.memory.ram[addr - RAM_START];
 }
 
 fn read_oam(gb: *gameboy.State, addr: Addr) u8 {
-    return gb.oam[addr - OAM_START];
+    return gb.memory.oam[addr - OAM_START];
 }
 
 fn read_not_usable(gb: *gameboy.State, addr: Addr) u8 {
@@ -89,42 +484,67 @@ fn read_not_usable(gb: *gameboy.State, addr: Addr) u8 {
 fn read_io_registers(gb: *gameboy.State, addr: Addr) u8 {
     return switch (addr) {
         0xff00 => value: {
-            const nibble = if (gb.io_registers.joyp.select_d_pad == 0)
-                gb.button_state.nibbles.d_pad
-            else if (gb.io_registers.joyp.select_buttons == 0)
-                gb.button_state.nibbles.buttons
+            const nibble = if (gb.memory.io.joyp.select_d_pad == 0)
+                gb.joypad.button_state.nibbles.d_pad
+            else if (gb.memory.io.joyp.select_buttons == 0)
+                gb.joypad.button_state.nibbles.buttons
             else
                 0xf;
             break :value @as(u8, 0b11) << 6 |
-                @as(u8, @as(u2, @bitCast(gb.io_registers.joyp))) << 4 |
+                @as(u8, @as(u2, @bitCast(gb.memory.io.joyp))) << 4 |
                 nibble;
         },
-        0xff04 => gb.io_registers.div,
-        0xff05 => gb.io_registers.tima,
-        0xff06 => gb.io_registers.tma,
-        0xff07 => @bitCast(gb.io_registers.tac),
-        0xff0f => @bitCast(gb.io_registers.intf),
-        0xff40 => @bitCast(gb.io_registers.lcdc),
-        0xff41 => @bitCast(gb.io_registers.stat),
-        0xff42 => gb.io_registers.scy,
-        0xff43 => gb.io_registers.scx,
-        0xff44 => gb.io_registers.ly,
-        0xff45 => gb.io_registers.lyc,
-        0xff46 => gb.io_registers.dma,
-        0xff47 => @bitCast(gb.io_registers.bgp),
-        0xff48 => @bitCast(gb.io_registers.obp0),
-        0xff49 => @bitCast(gb.io_registers.obp1),
-        0xff50 => @as(u8, 0xfe) | @intFromBool(gb.io_registers.boot_rom_finished),
+        0xff04 => gb.memory.io.div,
+        0xff05 => gb.memory.io.tima,
+        0xff06 => gb.memory.io.tma,
+        0xff07 => @bitCast(gb.memory.io.tac),
+        0xff0f => @bitCast(gb.memory.io.intf),
+        0xff10 => @bitCast(gb.memory.io.nr10),
+        0xff11 => @bitCast(gb.memory.io.nr11),
+        0xff12 => @bitCast(gb.memory.io.nr12),
+        0xff13 => gb.memory.io.nr13,
+        0xff14 => @bitCast(gb.memory.io.nr14),
+        0xff16 => @bitCast(gb.memory.io.nr21),
+        0xff17 => @bitCast(gb.memory.io.nr22),
+        0xff18 => gb.memory.io.nr23,
+        0xff19 => @bitCast(gb.memory.io.nr24),
+        0xff1a => @as(u8, @intFromBool(gb.apu.ch3.dac_enabled)) << 7 | @as(u8, 0x7f),
+        0xff1b => @bitCast(gb.memory.io.nr31),
+        0xff1c => 0x6f | @as(u8, @intFromEnum(gb.memory.io.nr32)) << 5,
+        0xff1d => gb.memory.io.nr33,
+        0xff1e => @bitCast(gb.memory.io.nr34),
+        0xff20 => @as(u8, 0xc0) | gb.memory.io.nr41,
+        0xff21 => @bitCast(gb.memory.io.nr42),
+        0xff22 => @bitCast(gb.memory.io.nr43),
+        0xff23 => @bitCast(gb.memory.io.nr44),
+        0xff24 => @bitCast(gb.memory.io.nr50),
+        0xff25 => @bitCast(gb.memory.io.nr51),
+        0xff26 => @bitCast(gb.memory.io.nr52),
+        inline 0xff30...0xff3f => |a| value: {
+            const idx: u4 = @truncate(a);
+            break :value @bitCast(gb.memory.io.wave_pattern_ram[idx]);
+        },
+        0xff40 => @bitCast(gb.memory.io.lcdc),
+        0xff41 => @bitCast(gb.memory.io.stat),
+        0xff42 => gb.memory.io.scy,
+        0xff43 => gb.memory.io.scx,
+        0xff44 => gb.memory.io.ly,
+        0xff45 => gb.memory.io.lyc,
+        0xff46 => gb.memory.io.dma,
+        0xff47 => @bitCast(gb.memory.io.bgp),
+        0xff48 => @bitCast(gb.memory.io.obp0),
+        0xff49 => @bitCast(gb.memory.io.obp1),
+        0xff50 => @as(u8, 0xfe) | @intFromBool(gb.memory.io.boot_rom_finished),
         else => 0xff,
     };
 }
 
 fn read_hram(gb: *gameboy.State, addr: Addr) u8 {
-    return gb.hram[addr - HRAM_START];
+    return gb.memory.hram[addr - HRAM_START];
 }
 
 fn read_ie(gb: *gameboy.State) u8 {
-    return @bitCast(gb.io_registers.ie);
+    return @bitCast(gb.memory.io.ie);
 }
 
 /// Writes a single byte at the given `Addr`, delegating it
@@ -154,7 +574,7 @@ fn write_mbc_rom(gb: *gameboy.State, addr: Addr, value: u8) void {
 }
 
 fn write_vram(gb: *gameboy.State, addr: Addr, value: u8) void {
-    gb.vram[addr - VRAM_START] = value;
+    gb.memory.vram[addr - VRAM_START] = value;
 }
 
 fn write_mbc_ram(gb: *gameboy.State, addr: Addr, value: u8) void {
@@ -165,15 +585,15 @@ fn write_mbc_ram(gb: *gameboy.State, addr: Addr, value: u8) void {
 }
 
 fn write_ram(gb: *gameboy.State, addr: Addr, value: u8) void {
-    gb.ram[addr - RAM_START] = value;
+    gb.memory.ram[addr - RAM_START] = value;
 }
 
 fn write_banked_ram(gb: *gameboy.State, addr: Addr, value: u8) void {
-    gb.ram[addr - RAM_START] = value;
+    gb.memory.ram[addr - RAM_START] = value;
 }
 
 fn write_oam(gb: *gameboy.State, addr: Addr, value: u8) void {
-    gb.oam[addr - OAM_START] = value;
+    gb.memory.oam[addr - OAM_START] = value;
 }
 
 fn write_not_usable(gb: *gameboy.State, addr: Addr, value: u8) void {
@@ -185,41 +605,256 @@ fn write_not_usable(gb: *gameboy.State, addr: Addr, value: u8) void {
 
 fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
     switch (addr) {
-        0xff00 => gb.io_registers.joyp = @bitCast(@as(u2, @truncate(value >> 4))),
-        0xff04 => gb.io_registers.div = 0,
-        0xff05 => gb.io_registers.tima = value,
-        0xff06 => gb.io_registers.tma = value,
-        0xff07 => gb.io_registers.tac = @bitCast(value & 0b111),
-        0xff0f => gb.io_registers.intf = @bitCast(value & 0b11111),
-        0xff40 => gb.io_registers.lcdc = @bitCast(value),
-        0xff41 => gb.io_registers.stat = @bitCast(value & 0x7f),
-        0xff42 => gb.io_registers.scy = value,
-        0xff43 => gb.io_registers.scx = value,
-        0xff45 => gb.io_registers.lyc = value,
+        0xff00 => gb.memory.io.joyp = @bitCast(@as(u2, @truncate(value >> 4))),
+        0xff04 => gb.memory.io.div = 0,
+        0xff05 => gb.memory.io.tima = value,
+        0xff06 => gb.memory.io.tma = value,
+        0xff07 => gb.memory.io.tac = @bitCast(0xf8 | value),
+        0xff0f => gb.memory.io.intf = @bitCast(0xe0 | value),
+        inline 0xff10...0xff25 => |a| {
+            if (!gb.memory.io.nr52.enable) {
+                return;
+            }
+
+            switch (a) {
+                0xff10 => {
+                    gb.memory.io.nr10 = @bitCast(0x80 | value);
+                },
+                0xff11 => {
+                    gb.memory.io.nr11 = @bitCast(value);
+                    gb.apu.ch1.length.timer = @as(u7, 64) - gb.memory.io.nr11.initial_length_timer;
+                },
+                0xff12 => {
+                    gb.memory.io.nr12 = @bitCast(value);
+
+                    gb.apu.ch1.dac_enabled = gb.memory.io.nr12.initial_volume != 0 or
+                        gb.memory.io.nr12.envelope_direction != .decreasing;
+                    if (!gb.apu.ch1.dac_enabled) {
+                        gb.memory.io.nr52.ch1_on = false;
+                    }
+                },
+                0xff13 => {
+                    gb.memory.io.nr13 = value;
+                },
+                0xff14 => {
+                    gb.memory.io.nr14 = @bitCast(0b00111000 | value);
+
+                    if (gb.memory.io.nr14.trigger) {
+                        gb.memory.io.nr14.trigger = false;
+
+                        if (!gb.memory.io.nr52.ch1_on) {
+                            gb.apu.ch1.position = 0;
+                        }
+
+                        gb.apu.ch1.frequency = apu.frequency(gb, .ch1);
+
+                        gb.apu.ch1.envelope.timer = if (gb.memory.io.nr12.pace > 0)
+                            gb.memory.io.nr12.pace
+                        else
+                            8;
+                        gb.apu.ch1.envelope.value = gb.memory.io.nr12.initial_volume;
+
+                        gb.apu.ch1.sweep.enabled =
+                            gb.memory.io.nr10.pace > 0 or gb.memory.io.nr10.step > 0;
+                        gb.apu.ch1.sweep.timer = if (gb.memory.io.nr10.pace > 0)
+                            gb.memory.io.nr10.pace
+                        else
+                            8;
+                        if (gb.memory.io.nr10.step > 0) {
+                            _ = apu.calculateFrequency(gb);
+                        }
+
+                        gb.memory.io.nr52.ch1_on = true;
+                    }
+                },
+                0xff16 => {
+                    gb.memory.io.nr21 = @bitCast(value);
+                    gb.apu.ch2.length.timer = @as(u7, 64) - gb.memory.io.nr21.initial_length_timer;
+                },
+                0xff17 => {
+                    gb.memory.io.nr22 = @bitCast(value);
+
+                    gb.apu.ch2.dac_enabled = gb.memory.io.nr22.initial_volume != 0 or
+                        gb.memory.io.nr22.envelope_direction != .decreasing;
+                    if (!gb.apu.ch2.dac_enabled) {
+                        gb.memory.io.nr52.ch2_on = false;
+                    }
+                },
+                0xff18 => {
+                    gb.memory.io.nr23 = value;
+                },
+                0xff19 => {
+                    gb.memory.io.nr24 = @bitCast(0b00111000 | value);
+
+                    if (gb.memory.io.nr24.trigger) {
+                        gb.memory.io.nr24.trigger = false;
+
+                        if (!gb.memory.io.nr52.ch2_on) {
+                            gb.apu.ch2.position = 0;
+                        }
+
+                        gb.apu.ch2.frequency = apu.frequency(gb, .ch2);
+
+                        gb.apu.ch2.envelope.timer = if (gb.memory.io.nr22.pace > 0)
+                            gb.memory.io.nr22.pace
+                        else
+                            8;
+                        gb.apu.ch2.envelope.value = gb.memory.io.nr22.initial_volume;
+
+                        gb.memory.io.nr52.ch2_on = true;
+                    }
+                },
+                0xff1a => gb.apu.ch3.dac_enabled = value & 0x80 != 0,
+                0xff1b => {
+                    gb.memory.io.nr31 = value;
+                    gb.apu.ch3.length.timer = @as(u9, 256) - gb.memory.io.nr31;
+                },
+                0xff1c => gb.memory.io.nr32 = @enumFromInt(@as(u2, @truncate(value >> 5))),
+                0xff1d => gb.memory.io.nr33 = value,
+                0xff1e => {
+                    gb.memory.io.nr34 = @bitCast(0b00111000 | value);
+
+                    if (gb.memory.io.nr34.trigger) {
+                        gb.memory.io.nr34.trigger = false;
+
+                        if (!gb.memory.io.nr52.ch3_on) {
+                            gb.apu.ch3.position = 0;
+                        }
+                        gb.apu.ch3.frequency = apu.frequency(gb, .ch3);
+                        gb.memory.io.nr52.ch3_on = true;
+                    }
+                },
+                0xff20 => {
+                    gb.memory.io.nr41 = @truncate(value);
+                    gb.apu.ch4.length.timer = @as(u7, 64) - gb.memory.io.nr41;
+                },
+                0xff21 => {
+                    gb.memory.io.nr42 = @bitCast(value);
+                    gb.apu.ch4.dac_enabled = gb.memory.io.nr42.initial_volume != 0 or
+                        gb.memory.io.nr42.envelope_direction != .decreasing;
+                    if (!gb.apu.ch4.dac_enabled) {
+                        gb.memory.io.nr52.ch4_on = false;
+                    }
+                },
+                0xff22 => gb.memory.io.nr43 = @bitCast(value),
+                0xff23 => {
+                    gb.memory.io.nr44 = @bitCast(0x3f | value);
+
+                    if (gb.memory.io.nr44.trigger) {
+                        gb.memory.io.nr44.trigger = false;
+
+                        gb.apu.ch4.lfsr = math.maxInt(u15);
+                        gb.apu.ch4.envelope.timer = if (gb.memory.io.nr42.pace > 0)
+                            gb.memory.io.nr42.pace
+                        else
+                            8;
+                        gb.apu.ch4.envelope.value = gb.memory.io.nr42.initial_volume;
+
+                        gb.memory.io.nr52.ch4_on = true;
+                    }
+                },
+                0xff24 => gb.memory.io.nr50 = @bitCast(value),
+                0xff25 => gb.memory.io.nr51 = @bitCast(value),
+                else => {},
+            }
+        },
+        0xff26 => {
+            gb.memory.io.nr52.enable = value & 0x80 != 0;
+            if (!gb.memory.io.nr52.enable) {
+                gb.memory.io.nr10.step = 0;
+                gb.memory.io.nr10.direction = .increasing;
+                gb.memory.io.nr10.pace = 0;
+                gb.memory.io.nr11.initial_length_timer = math.maxInt(u6);
+                gb.memory.io.nr11.duty_cycle = .eighth;
+                gb.memory.io.nr12.pace = 0;
+                gb.memory.io.nr12.envelope_direction = .decreasing;
+                gb.memory.io.nr12.initial_volume = 0;
+                gb.memory.io.nr13 = 0xff;
+                gb.memory.io.nr14.period = math.maxInt(u3);
+                gb.memory.io.nr14.length_enable = false;
+                gb.memory.io.nr14.trigger = true;
+
+                gb.memory.io.nr21.initial_length_timer = math.maxInt(u6);
+                gb.memory.io.nr21.duty_cycle = .eighth;
+                gb.memory.io.nr22.pace = 0;
+                gb.memory.io.nr22.envelope_direction = .decreasing;
+                gb.memory.io.nr22.initial_volume = 0;
+                gb.memory.io.nr23 = 0xff;
+                gb.memory.io.nr24.period = math.maxInt(u3);
+                gb.memory.io.nr24.length_enable = false;
+                gb.memory.io.nr24.trigger = true;
+
+                gb.apu.ch3.dac_enabled = false;
+                gb.memory.io.nr31 = 0xff;
+                gb.memory.io.nr32 = .mute;
+                gb.memory.io.nr33 = 0xff;
+                gb.memory.io.nr34.period = math.maxInt(u3);
+                gb.memory.io.nr34.length_enable = false;
+                gb.memory.io.nr34.trigger = true;
+
+                gb.memory.io.nr41 = math.maxInt(u6);
+                gb.memory.io.nr42.pace = 0;
+                gb.memory.io.nr42.envelope_direction = .decreasing;
+                gb.memory.io.nr42.initial_volume = 0;
+                gb.memory.io.nr43.clock_divider = 0;
+                gb.memory.io.nr43.lfsr_width = .bit15;
+                gb.memory.io.nr43.clock_shift = 0;
+                gb.memory.io.nr44.length_enable = false;
+                gb.memory.io.nr44.trigger = true;
+
+                gb.memory.io.nr50.volume_right = 0;
+                gb.memory.io.nr50.vin_right = false;
+                gb.memory.io.nr50.volume_left = 0;
+                gb.memory.io.nr50.vin_left = false;
+
+                gb.memory.io.nr51.ch1_right = false;
+                gb.memory.io.nr51.ch2_right = false;
+                gb.memory.io.nr51.ch3_right = false;
+                gb.memory.io.nr51.ch4_right = false;
+                gb.memory.io.nr51.ch1_left = false;
+                gb.memory.io.nr51.ch2_left = false;
+                gb.memory.io.nr51.ch3_left = false;
+                gb.memory.io.nr51.ch4_left = false;
+
+                gb.memory.io.nr52.ch1_on = false;
+                gb.memory.io.nr52.ch2_on = false;
+                gb.memory.io.nr52.ch3_on = false;
+                gb.memory.io.nr52.ch4_on = false;
+            }
+        },
+        inline 0xff30...0xff3f => |a| {
+            const idx: u4 = @truncate(a);
+            gb.memory.io.wave_pattern_ram[idx] = @bitCast(value);
+        },
+        0xff40 => gb.memory.io.lcdc = @bitCast(value),
+        0xff41 => gb.memory.io.stat = @bitCast(0x80 | value),
+        0xff42 => gb.memory.io.scy = value,
+        0xff43 => gb.memory.io.scx = value,
+        0xff45 => gb.memory.io.lyc = value,
         0xff46 => {
-            gb.io_registers.dma = value;
+            gb.memory.io.dma = value;
             // TODO: naive
             const start: Addr = @as(u16, value) << 8;
             for (start..start + 0xa0) |a| {
                 const byte = readByte(gb, @intCast(a));
-                gb.oam[a - start] = byte;
+                gb.memory.oam[a - start] = byte;
             }
         },
-        0xff47 => gb.io_registers.bgp = @bitCast(value),
-        0xff48 => gb.io_registers.obp0 = @bitCast(value),
-        0xff49 => gb.io_registers.obp1 = @bitCast(value),
+        0xff47 => gb.memory.io.bgp = @bitCast(value),
+        0xff48 => gb.memory.io.obp0 = @bitCast(value),
+        0xff49 => gb.memory.io.obp1 = @bitCast(value),
         0xff50 => {
-            gb.io_registers.boot_rom_finished =
-                gb.io_registers.boot_rom_finished or value != 0;
+            gb.memory.io.boot_rom_finished =
+                gb.memory.io.boot_rom_finished or value != 0;
         },
         else => {},
     }
 }
 
 fn write_hram(gb: *gameboy.State, addr: Addr, value: u8) void {
-    gb.hram[addr - HRAM_START] = value;
+    gb.memory.hram[addr - HRAM_START] = value;
 }
 
 fn write_ie(gb: *gameboy.State, value: u8) void {
-    gb.io_registers.ie = @bitCast(value);
+    gb.memory.io.ie = @bitCast(value);
 }

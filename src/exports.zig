@@ -25,15 +25,24 @@ export fn deinit(gb: *gameboy.State) void {
 
 export fn loadROM(gb: *gameboy.State, ptr: [*]u8, len: u32) void {
     // TODO: read header? mbc type?
-    gb.rom = ptr[0..len];
+    gb.memory.rom = ptr[0..len];
 }
 
-export fn step(gb: *gameboy.State) void {
-    cpu.step(gb);
+/// Try to run for the given amount of `cycles`, returning the delta.
+export fn stepCycles(gb: *gameboy.State, cycles: i32) i32 {
+    const target_cycles = cycles;
+    var consumed_cycles: i32 = 0;
+
+    while (consumed_cycles < target_cycles) {
+        const consumed = cpu.step(gb);
+        consumed_cycles += consumed;
+    }
+
+    return target_cycles - consumed_cycles;
 }
 
 export fn pixels(gb: *gameboy.State) [*]ppu.Pixel {
-    return gb.pixels;
+    return gb.ppu.pixels;
 }
 
 export fn buttonPress(gb: *gameboy.State, button: joypad.Button) void {
@@ -42,4 +51,12 @@ export fn buttonPress(gb: *gameboy.State, button: joypad.Button) void {
 
 export fn buttonRelease(gb: *gameboy.State, button: joypad.Button) void {
     joypad.release(gb, button);
+}
+
+export fn readLeftAudioChannel(gb: *gameboy.State, ptr: [*]f32, len: u32) usize {
+    return gb.apu.l_chan.read(ptr[0..len]);
+}
+
+export fn readRightAudioChannel(gb: *gameboy.State, ptr: [*]f32, len: u32) usize {
+    return gb.apu.r_chan.read(ptr[0..len]);
 }

@@ -1,7 +1,32 @@
+//! Joypad buttons and inputs.
+
 const std = @import("std");
 const testing = std.testing;
 
 const gameboy = @import("gb.zig");
+
+/// Tracks the internal state of the joypad.
+pub const State = struct {
+    /// Which buttons are currently being pressed, 0 means pressed.
+    button_state: ButtonState,
+
+    pub fn init() @This() {
+        return @This(){
+            .button_state = .{
+                .named = .{
+                    .right = 1,
+                    .left = 1,
+                    .up = 1,
+                    .down = 1,
+                    .a = 1,
+                    .b = 1,
+                    .select = 1,
+                    .start = 1,
+                },
+            },
+        };
+    }
+};
 
 /// Tracks the state of which buttons are being pressed.
 pub const ButtonState = packed union {
@@ -48,13 +73,13 @@ pub const Button = enum(u8) { right, left, up, down, a, b, select, start };
 
 pub fn press(gb: *gameboy.State, button: Button) void {
     switch (button) {
-        inline else => |b| @field(gb.button_state.named, @tagName(b)) = 0,
+        inline else => |b| @field(gb.joypad.button_state.named, @tagName(b)) = 0,
     }
-    gb.io_registers.intf.joypad = true;
+    gb.memory.io.intf.joypad = true;
 }
 
 pub fn release(gb: *gameboy.State, button: Button) void {
     switch (button) {
-        inline else => |b| @field(gb.button_state.named, @tagName(b)) = 1,
+        inline else => |b| @field(gb.joypad.button_state.named, @tagName(b)) = 1,
     }
 }

@@ -40,6 +40,7 @@ export default tseslint.config(
         { allowConstantExport: true },
       ],
       "prefer-const": ["error", { ignoreReadBeforeAssign: true }],
+      "@typescript-eslint/array-type": ["error", { default: "generic" }],
     },
   },
 );
