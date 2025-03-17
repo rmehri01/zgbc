@@ -103,7 +103,11 @@ pub fn step(gb: *gameboy.State) void {
                 gb.ppu.dots = 0;
                 gb.memory.io.stat.mode = .h_blank;
 
-                render_line(gb);
+                if (gb.memory.io.stat.h_blank_int_select) {
+                    gb.memory.io.intf.lcd = true;
+                }
+
+                renderLine(gb);
             }
         },
         .h_blank => {
@@ -111,11 +115,24 @@ pub fn step(gb: *gameboy.State) void {
                 gb.ppu.dots = 0;
                 gb.memory.io.ly += 1;
 
+                if (gb.memory.io.ly == gb.memory.io.lyc) {
+                    gb.memory.io.intf.lcd = true;
+                    gb.memory.io.stat.lyc_eq = true;
+                }
+
                 if (gb.memory.io.ly == SCREEN_HEIGHT) {
                     gb.memory.io.stat.mode = .v_blank;
                     gb.memory.io.intf.v_blank = true;
+
+                    if (gb.memory.io.stat.v_blank_int_select) {
+                        gb.memory.io.intf.lcd = true;
+                    }
                 } else {
                     gb.memory.io.stat.mode = .oam_scan;
+
+                    if (gb.memory.io.stat.oam_scan_int_select) {
+                        gb.memory.io.intf.lcd = true;
+                    }
                 }
             }
         },
@@ -124,16 +141,29 @@ pub fn step(gb: *gameboy.State) void {
                 gb.ppu.dots = 0;
                 gb.memory.io.ly += 1;
 
+                if (gb.memory.io.ly == gb.memory.io.lyc) {
+                    gb.memory.io.intf.lcd = true;
+                    gb.memory.io.stat.lyc_eq = true;
+                }
+
                 if (gb.memory.io.ly > 153) {
                     gb.memory.io.stat.mode = .oam_scan;
                     gb.memory.io.ly = 0;
+
+                    if (gb.memory.io.ly == gb.memory.io.lyc) {
+                        gb.memory.io.intf.lcd = true;
+                        gb.memory.io.stat.lyc_eq = true;
+                    }
+                    if (gb.memory.io.stat.oam_scan_int_select) {
+                        gb.memory.io.intf.lcd = true;
+                    }
                 }
             }
         },
     }
 }
 
-fn render_line(gb: *gameboy.State) void {
+fn renderLine(gb: *gameboy.State) void {
     const y_pixel = gb.memory.io.ly +% gb.memory.io.scy;
     const x_pixel_start = gb.memory.io.scx;
 
@@ -148,12 +178,12 @@ fn render_line(gb: *gameboy.State) void {
 
     if (gb.memory.io.lcdc.bg_window_enable_priority) {
         for (0..SCREEN_WIDTH) |x_pixel_off| {
-            const x_pixel = x_pixel_start +% x_pixel_off;
+            const x_pixel: u8 = x_pixel_start +% @as(u8, @intCast(x_pixel_off));
 
             const tile_id = gb.memory.vram[bg_tile_map_start + (@as(u16, y_pixel) / 8) * 32 + (x_pixel / 8) - memory.VRAM_START];
             var tile_addr = switch (gb.memory.io.lcdc.bg_window_tile_data_area) {
                 .signed => value: {
-                    const offset: i8 = @bitCast(tile_id);
+                    const offset = @as(i8, @bitCast(tile_id)) * @as(i16, 16);
                     break :value if (offset < 0)
                         data_area_start - @abs(offset)
                     else
@@ -183,13 +213,20 @@ fn render_line(gb: *gameboy.State) void {
 
     if (gb.memory.io.lcdc.obj_enable) {
         var obj_addr: memory.Addr = memory.OAM_START;
-        while (obj_addr < memory.OAM_START + 0xa0) : (obj_addr += @sizeOf(Object)) {
+        const obj_size = @sizeOf(Object);
+
+        while (obj_addr < memory.OAM_START + 0xa0) : (obj_addr += obj_size) {
             // TODO: clean up
-            const object: Object = @bitCast(gb.memory.oam[obj_addr - memory.OAM_START .. obj_addr - memory.OAM_START + @sizeOf(Object)][0..@sizeOf(Object)].*);
+            const rel_addr = obj_addr - memory.OAM_START;
+            const object: Object = @bitCast(
+                gb.memory.oam[rel_addr .. rel_addr + obj_size][0..obj_size].*,
+            );
 
             // TODO: naive
             // TODO: height not always 8
-            if (object.y_pos <= y_pixel + 16 and y_pixel + 16 < object.y_pos + 8) {
+            if (object.y_pos <= gb.memory.io.ly + 16 and
+                gb.memory.io.ly + 16 < object.y_pos + 8)
+            {
                 const palette = switch (object.flags.dmg_palette) {
                     0 => gb.memory.io.obp0,
                     1 => gb.memory.io.obp1,
@@ -197,33 +234,28 @@ fn render_line(gb: *gameboy.State) void {
 
                 const tile_id = object.tile_id;
 
-                // TODO: handle flip and priority
-
                 for (0..8) |x_pixel_off| {
-                    const x_pixel = object.x_pos +% x_pixel_off -% 8;
+                    const x_pixel: u8 = object.x_pos +% @as(u8, @intCast(x_pixel_off)) -% 8;
 
-                    if (x_pixel_start <= x_pixel and
-                        x_pixel < x_pixel_start + SCREEN_WIDTH)
+                    if (0 <= x_pixel and x_pixel < SCREEN_WIDTH and
+                        // TODO: messy
+                        (object.flags.priority == .above or
+                            gb.ppu.pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel] == colors[gb.memory.io.bgp.id0]))
                     {
-                        // TODO: duplicated
-                        var tile_addr = switch (gb.memory.io.lcdc.bg_window_tile_data_area) {
-                            .signed => value: {
-                                const offset: i8 = @bitCast(tile_id);
-                                break :value if (offset < 0)
-                                    data_area_start - @abs(offset)
-                                else
-                                    data_area_start + @abs(offset);
-                            },
-                            .unsigned => data_area_start + @as(u16, tile_id) * 16,
-                        };
+                        var tile_addr = memory.TILE_BLOCK0_START + @as(u16, tile_id) * 16;
 
-                        tile_addr += (y_pixel % 8) * 2;
+                        const y_pixel_off = gb.memory.io.ly + 16 - object.y_pos;
+                        tile_addr += (if (object.flags.y_flip) 7 - y_pixel_off else y_pixel_off) * 2;
 
                         const tile_data1 = gb.memory.vram[tile_addr - memory.VRAM_START];
                         const tile_data2 = gb.memory.vram[tile_addr + 1 - memory.VRAM_START];
 
-                        const lo = tile_data1 & (@as(u8, 0x80) >> @intCast(x_pixel % 8)) != 0;
-                        const hi = tile_data2 & (@as(u8, 0x80) >> @intCast(x_pixel % 8)) != 0;
+                        const x_bit_num: u3 = if (object.flags.x_flip)
+                            @intCast(7 - x_pixel_off)
+                        else
+                            @intCast(x_pixel_off);
+                        const lo = tile_data1 & (@as(u8, 0x80) >> x_bit_num) != 0;
+                        const hi = tile_data2 & (@as(u8, 0x80) >> x_bit_num) != 0;
 
                         const palette_id = @as(u2, @intFromBool(hi)) << 1 | @intFromBool(lo);
                         const color_id = switch (palette_id) {
@@ -232,7 +264,7 @@ fn render_line(gb: *gameboy.State) void {
                             2 => palette.id2,
                             3 => palette.id3,
                         };
-                        gb.ppu.pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel - x_pixel_start] = colors[color_id];
+                        gb.ppu.pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel] = colors[color_id];
                     }
                 }
             }

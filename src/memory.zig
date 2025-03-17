@@ -12,15 +12,20 @@ const ppu = @import("ppu.zig");
 /// 16-bit address to index ROM, RAM, and I/O.
 pub const Addr = u16;
 
+pub const MBC_ROM_START = 0x4000;
 pub const VRAM_START = 0x8000;
 pub const TILE_BLOCK0_START = 0x8000;
 pub const TILE_BLOCK1_START = 0x8800;
 pub const TILE_BLOCK2_START = 0x9000;
 pub const TILE_MAP0_START = 0x9800;
 pub const TILE_MAP1_START = 0x9c00;
+pub const MBC_RAM_START = 0xa000;
 pub const RAM_START = 0xc000;
 pub const OAM_START = 0xfe00;
 pub const HRAM_START = 0xff80;
+
+pub const ROM_HEADER_CARTRIDGE_TYPE = 0x147;
+pub const ROM_HEADER_RAM_SIZE = 0x149;
 
 const dmg_boot_rom = @embedFile("boot/dmg.bin");
 
@@ -29,7 +34,14 @@ pub const State = struct {
     /// The boot ROM to use when starting up.
     boot_rom: []const u8,
     /// The cartridge that is currently loaded.
-    rom: ?[]const u8,
+    rom: ?struct {
+        /// The raw bytes of the rom.
+        data: []const u8,
+        /// State of the memory bank controller.
+        mbc: MbcState,
+        /// External RAM in the cartridge.
+        mbc_ram: []u8,
+    },
     /// Video RAM.
     vram: *[0x2000]u8,
     /// Work RAM.
@@ -401,7 +413,8 @@ pub const State = struct {
 
     pub fn deinit(self: @This(), allocator: mem.Allocator) void {
         if (self.rom) |rom| {
-            allocator.free(rom);
+            allocator.free(rom.data);
+            allocator.free(rom.mbc_ram);
         }
 
         allocator.destroy(self.vram);
@@ -410,6 +423,70 @@ pub const State = struct {
         allocator.destroy(self.hram);
     }
 };
+
+/// Memory bank controller state which is specific to the kind of mapper.
+pub const MbcState = union(CartridgeType) {
+    rom_only: struct {},
+    mbc1: Mbc1,
+    mbc1_ram: Mbc1,
+    mbc1_ram_battery: Mbc1,
+};
+
+/// Determines the type of mapper.
+pub const CartridgeType = enum(u8) {
+    rom_only = 0,
+    mbc1 = 1,
+    mbc1_ram = 2,
+    mbc1_ram_battery = 3,
+};
+
+/// Register state for mbc 1.
+pub const Mbc1 = struct {
+    /// Enables external RAM.
+    mbc_ram_enable: bool,
+    /// Which ROM bank to read from.
+    rom_bank: u7,
+    /// Which RAM bank to read from.
+    ram_bank: u2,
+    /// Determines whether to use space as extra rom or extra external ram.
+    mode: enum(u1) {
+        rom_mode = 0,
+        ram_mode = 1,
+    },
+};
+
+/// Loads a ROM cartridge and sets up some state based on the header.
+pub fn loadROM(allocator: mem.Allocator, gb: *gameboy.State, ptr: [*]u8, len: u32) !void {
+    gb.memory.rom = .{
+        .data = ptr[0..len],
+        .mbc = switch (@as(CartridgeType, @enumFromInt(ptr[ROM_HEADER_CARTRIDGE_TYPE]))) {
+            .rom_only => .{ .rom_only = .{} },
+            inline .mbc1, .mbc1_ram, .mbc1_ram_battery => |variant| @unionInit(
+                MbcState,
+                @tagName(variant),
+                .{
+                    .mbc_ram_enable = false,
+                    .rom_bank = 0,
+                    .ram_bank = 0,
+                    .mode = .rom_mode,
+                },
+            ),
+        },
+        .mbc_ram = value: {
+            const num_banks: u16 = switch (ptr[ROM_HEADER_RAM_SIZE]) {
+                0 => 0,
+                1 => 0,
+                2 => 1,
+                3 => 4,
+                4 => 16,
+                5 => 8,
+                else => unreachable,
+            };
+            const mbc_ram = try allocator.alloc(u8, num_banks * 0x2000);
+            break :value mbc_ram;
+        },
+    };
+}
 
 /// Reads a single byte at the given `Addr`, delegating it
 /// to the correct handler.
@@ -437,7 +514,7 @@ fn read_rom(gb: *gameboy.State, addr: Addr) u8 {
     }
 
     if (gb.memory.rom) |rom| {
-        return rom[addr];
+        return rom.data[addr];
     }
 
     return 0xff;
@@ -445,7 +522,11 @@ fn read_rom(gb: *gameboy.State, addr: Addr) u8 {
 
 fn read_mbc_rom(gb: *gameboy.State, addr: Addr) u8 {
     if (gb.memory.rom) |rom| {
-        return rom[addr];
+        const bank = switch (rom.mbc) {
+            .rom_only => 1,
+            .mbc1, .mbc1_ram, .mbc1_ram_battery => |mbc1| mbc1.rom_bank,
+        };
+        return rom.data[bank * @as(u32, 0x4000) + addr - MBC_ROM_START];
     }
 
     return 0xff;
@@ -456,9 +537,22 @@ fn read_vram(gb: *gameboy.State, addr: Addr) u8 {
 }
 
 fn read_mbc_ram(gb: *gameboy.State, addr: Addr) u8 {
-    _ = gb; // autofix
-    _ = addr; // autofix
-    return 0;
+    if (gb.memory.rom) |rom| {
+        if (rom.mbc_ram.len == 0) {
+            return 0xff;
+        }
+
+        const bank = switch (rom.mbc) {
+            .rom_only => 0,
+            .mbc1, .mbc1_ram, .mbc1_ram_battery => |mbc1| if (mbc1.mbc_ram_enable)
+                mbc1.ram_bank
+            else
+                return 0xff,
+        };
+        return rom.mbc_ram[bank * @as(u16, 0x2000) + addr - MBC_RAM_START];
+    }
+
+    return 0xff;
 }
 
 fn read_ram(gb: *gameboy.State, addr: Addr) u8 {
@@ -477,8 +571,7 @@ fn read_not_usable(gb: *gameboy.State, addr: Addr) u8 {
     _ = gb; // autofix
     _ = addr; // autofix
     // TODO: oam corruption
-    // return 0;
-    @panic("unimplemented");
+    return 0;
 }
 
 fn read_io_registers(gb: *gameboy.State, addr: Addr) u8 {
@@ -567,10 +660,28 @@ pub fn writeByte(gb: *gameboy.State, addr: Addr, value: u8) void {
 }
 
 fn write_mbc_rom(gb: *gameboy.State, addr: Addr, value: u8) void {
-    _ = gb;
-    _ = addr;
-    _ = value;
-    // @panic("unimplemented");
+    if (gb.memory.rom) |*rom| {
+        switch (rom.mbc) {
+            .rom_only => {},
+            .mbc1, .mbc1_ram, .mbc1_ram_battery => |*mbc1| switch ((addr & 0xf000) >> 12) {
+                0, 1 => mbc1.mbc_ram_enable = (value & 0x0f) == 0x0a,
+                2, 3 => {
+                    var lo: u7 = @intCast(value & 0x1f);
+                    if (lo == 0) {
+                        lo = 1;
+                    }
+
+                    mbc1.rom_bank = (mbc1.rom_bank & 0x60) | lo;
+                },
+                4, 5 => switch (mbc1.mode) {
+                    .rom_mode => mbc1.rom_bank =
+                        @as(u7, @intCast(value & 0b11)) << 5 | (mbc1.rom_bank & 0x1f),
+                    .ram_mode => mbc1.ram_bank = @intCast(value & 0b11),
+                },
+                else => unreachable,
+            },
+        }
+    }
 }
 
 fn write_vram(gb: *gameboy.State, addr: Addr, value: u8) void {
@@ -578,10 +689,20 @@ fn write_vram(gb: *gameboy.State, addr: Addr, value: u8) void {
 }
 
 fn write_mbc_ram(gb: *gameboy.State, addr: Addr, value: u8) void {
-    _ = gb;
-    _ = addr;
-    _ = value;
-    // @panic("unimplemented");
+    if (gb.memory.rom) |*rom| {
+        if (rom.mbc_ram.len == 0) {
+            return;
+        }
+
+        const bank = switch (rom.mbc) {
+            .rom_only => 0,
+            .mbc1, .mbc1_ram, .mbc1_ram_battery => |mbc1| if (mbc1.mbc_ram_enable)
+                mbc1.ram_bank
+            else
+                return,
+        };
+        rom.mbc_ram[bank * @as(u16, 0x2000) + addr - MBC_RAM_START] = value;
+    }
 }
 
 fn write_ram(gb: *gameboy.State, addr: Addr, value: u8) void {
@@ -835,9 +956,9 @@ fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
             gb.memory.io.dma = value;
             // TODO: naive
             const start: Addr = @as(u16, value) << 8;
-            for (start..start + 0xa0) |a| {
-                const byte = readByte(gb, @intCast(a));
-                gb.memory.oam[a - start] = byte;
+            for (0..0xa0) |offset| {
+                const byte = readByte(gb, start + @as(u16, @intCast(offset)));
+                gb.memory.oam[offset] = byte;
             }
         },
         0xff47 => gb.memory.io.bgp = @bitCast(value),

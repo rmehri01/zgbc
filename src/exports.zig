@@ -6,6 +6,7 @@ const cpu = zgbc.cpu;
 const gameboy = zgbc.gameboy;
 const ppu = zgbc.ppu;
 const joypad = zgbc.joypad;
+const memory = zgbc.memory;
 
 export fn allocUint8Array(len: u32) [*]const u8 {
     const slice = allocator.alloc(u8, len) catch
@@ -24,8 +25,7 @@ export fn deinit(gb: *gameboy.State) void {
 }
 
 export fn loadROM(gb: *gameboy.State, ptr: [*]u8, len: u32) void {
-    // TODO: read header? mbc type?
-    gb.memory.rom = ptr[0..len];
+    memory.loadROM(allocator, gb, ptr, len) catch return;
 }
 
 /// Try to run for the given amount of `cycles`, returning the delta.
