@@ -237,6 +237,10 @@ pub const State = struct {
         obp0: ppu.ObjectPalette,
         /// Object palette data 1.
         obp1: ppu.ObjectPalette,
+        /// Window Y position.
+        wy: u8,
+        /// Window X position plus 7.
+        wx: u8,
         /// Set to non-zero to disable boot ROM, cannot be unset.
         boot_rom_finished: bool,
         /// Interrupt enable, controls whether the corresponding handler may be called.
@@ -399,6 +403,8 @@ pub const State = struct {
                     .id2 = 0,
                     .id3 = 0,
                 },
+                .wy = 0,
+                .wx = 0,
                 .boot_rom_finished = false,
                 .ie = .{
                     .v_blank = false,
@@ -661,6 +667,8 @@ fn read_io_registers(gb: *gameboy.State, addr: Addr) u8 {
         0xff47 => @bitCast(gb.memory.io.bgp),
         0xff48 => @bitCast(gb.memory.io.obp0),
         0xff49 => @bitCast(gb.memory.io.obp1),
+        0xff4a => gb.memory.io.wy,
+        0xff4b => gb.memory.io.wx,
         0xff50 => @as(u8, 0xfe) | @intFromBool(gb.memory.io.boot_rom_finished),
         else => 0xff,
     };
@@ -1013,6 +1021,8 @@ fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
         0xff47 => gb.memory.io.bgp = @bitCast(value),
         0xff48 => gb.memory.io.obp0 = @bitCast(value),
         0xff49 => gb.memory.io.obp1 = @bitCast(value),
+        0xff4a => gb.memory.io.wy = value,
+        0xff4b => gb.memory.io.wx = value,
         0xff50 => {
             gb.memory.io.boot_rom_finished =
                 gb.memory.io.boot_rom_finished or value != 0;

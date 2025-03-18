@@ -15,11 +15,15 @@ pub const State = struct {
     dots: u16,
     /// The pixels corresponding to the current state of the display.
     pixels: *[SCREEN_WIDTH * SCREEN_HEIGHT]Pixel,
+    /// Internal line counter similar to `ly` that only gets incremented when
+    /// the window is visible.
+    window_line: u8,
 
     pub fn init(allocator: mem.Allocator) !@This() {
         return @This(){
             .dots = 0,
             .pixels = try allocator.create([SCREEN_WIDTH * SCREEN_HEIGHT]Pixel),
+            .window_line = 0,
         };
     }
 
@@ -149,6 +153,7 @@ pub fn step(gb: *gameboy.State) void {
                 if (gb.memory.io.ly > 153) {
                     gb.memory.io.stat.mode = .oam_scan;
                     gb.memory.io.ly = 0;
+                    gb.ppu.window_line = 0;
 
                     if (gb.memory.io.ly == gb.memory.io.lyc) {
                         gb.memory.io.intf.lcd = true;
@@ -164,23 +169,39 @@ pub fn step(gb: *gameboy.State) void {
 }
 
 fn renderLine(gb: *gameboy.State) void {
-    const y_pixel = gb.memory.io.ly +% gb.memory.io.scy;
-    const x_pixel_start = gb.memory.io.scx;
-
-    const bg_tile_map_start: memory.Addr = switch (gb.memory.io.lcdc.bg_tile_map_area) {
-        0 => memory.TILE_MAP0_START,
-        1 => memory.TILE_MAP1_START,
-    };
     const data_area_start: memory.Addr = switch (gb.memory.io.lcdc.bg_window_tile_data_area) {
         .signed => memory.TILE_BLOCK2_START,
         .unsigned => memory.TILE_BLOCK0_START,
     };
 
+    var rendered_window = false;
     if (gb.memory.io.lcdc.bg_window_enable_priority) {
         for (0..SCREEN_WIDTH) |x_pixel_off| {
-            const x_pixel: u8 = x_pixel_start +% @as(u8, @intCast(x_pixel_off));
+            const tile_map_start_selector, const tile_map_y, const tile_map_x =
+                if (gb.memory.io.lcdc.window_enable and
+                gb.memory.io.wy <= gb.memory.io.ly and
+                gb.memory.io.wx -| 7 <= x_pixel_off) value: {
+                    rendered_window = true;
+                    break :value .{
+                        gb.memory.io.lcdc.window_tile_map_area,
+                        gb.ppu.window_line,
+                        @as(u8, @intCast(x_pixel_off)) + 7 - gb.memory.io.wx,
+                    };
+                } else .{
+                    gb.memory.io.lcdc.bg_tile_map_area,
+                    gb.memory.io.ly +% gb.memory.io.scy,
+                    @as(u8, @intCast(x_pixel_off)) +% gb.memory.io.scx,
+                };
+            const tile_map_start: memory.Addr = switch (tile_map_start_selector) {
+                0 => memory.TILE_MAP0_START,
+                1 => memory.TILE_MAP1_START,
+            };
 
-            const tile_id = gb.memory.vram[bg_tile_map_start + (@as(u16, y_pixel) / 8) * 32 + (x_pixel / 8) - memory.VRAM_START];
+            const tile_id = gb.memory.vram[
+                tile_map_start +
+                    (@as(u16, tile_map_y) / 8) * 32 +
+                    (tile_map_x / 8) - memory.VRAM_START
+            ];
             var tile_addr = switch (gb.memory.io.lcdc.bg_window_tile_data_area) {
                 .signed => value: {
                     const offset = @as(i8, @bitCast(tile_id)) * @as(i16, 16);
@@ -192,13 +213,13 @@ fn renderLine(gb: *gameboy.State) void {
                 .unsigned => data_area_start + @as(u16, tile_id) * 16,
             };
 
-            tile_addr += (y_pixel % 8) * 2;
+            tile_addr += (tile_map_y % 8) * 2;
 
             const tile_data1 = gb.memory.vram[tile_addr - memory.VRAM_START];
             const tile_data2 = gb.memory.vram[tile_addr + 1 - memory.VRAM_START];
 
-            const lo = tile_data1 & (@as(u8, 0x80) >> @intCast(x_pixel % 8)) != 0;
-            const hi = tile_data2 & (@as(u8, 0x80) >> @intCast(x_pixel % 8)) != 0;
+            const lo = tile_data1 & (@as(u8, 0x80) >> @intCast(tile_map_x % 8)) != 0;
+            const hi = tile_data2 & (@as(u8, 0x80) >> @intCast(tile_map_x % 8)) != 0;
 
             const palette_id = @as(u2, @intFromBool(hi)) << 1 | @intFromBool(lo);
             const color_id = switch (palette_id) {
@@ -207,8 +228,12 @@ fn renderLine(gb: *gameboy.State) void {
                 2 => gb.memory.io.bgp.id2,
                 3 => gb.memory.io.bgp.id3,
             };
-            gb.ppu.pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel_off] = colors[color_id];
+            gb.ppu.pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel_off] =
+                colors[color_id];
         }
+    }
+    if (rendered_window) {
+        gb.ppu.window_line += 1;
     }
 
     if (gb.memory.io.lcdc.obj_enable) {
@@ -264,7 +289,8 @@ fn renderLine(gb: *gameboy.State) void {
                             2 => palette.id2,
                             3 => palette.id3,
                         };
-                        gb.ppu.pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel] = colors[color_id];
+                        gb.ppu.pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel] =
+                            colors[color_id];
                     }
                 }
             }
