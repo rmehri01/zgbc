@@ -415,6 +415,11 @@ pub const State = struct {
         if (self.rom) |rom| {
             allocator.free(rom.data);
             allocator.free(rom.mbc_ram);
+
+            switch (rom.mbc) {
+                .mbc2, .mbc2_battery => |mbc2| allocator.destroy(mbc2.builtin_ram),
+                else => {},
+            }
         }
 
         allocator.destroy(self.vram);
@@ -430,14 +435,18 @@ pub const MbcState = union(CartridgeType) {
     mbc1: Mbc1,
     mbc1_ram: Mbc1,
     mbc1_ram_battery: Mbc1,
+    mbc2: Mbc2,
+    mbc2_battery: Mbc2,
 };
 
 /// Determines the type of mapper.
 pub const CartridgeType = enum(u8) {
-    rom_only = 0,
-    mbc1 = 1,
-    mbc1_ram = 2,
-    mbc1_ram_battery = 3,
+    rom_only = 0x00,
+    mbc1 = 0x01,
+    mbc1_ram = 0x02,
+    mbc1_ram_battery = 0x03,
+    mbc2 = 0x05,
+    mbc2_battery = 0x06,
 };
 
 /// Register state for mbc 1.
@@ -455,6 +464,16 @@ pub const Mbc1 = struct {
     },
 };
 
+/// Register state for mbc 2.
+pub const Mbc2 = struct {
+    /// Enables external RAM.
+    mbc_ram_enable: bool,
+    /// Which ROM bank to read from.
+    rom_bank: u4,
+    /// The chip includes 512 nibbles of RAM, only the lower 4 bits of each byte are used.
+    builtin_ram: *[512]u8,
+};
+
 /// Loads a ROM cartridge and sets up some state based on the header.
 pub fn loadROM(allocator: mem.Allocator, gb: *gameboy.State, ptr: [*]u8, len: u32) !void {
     gb.memory.rom = .{
@@ -469,6 +488,15 @@ pub fn loadROM(allocator: mem.Allocator, gb: *gameboy.State, ptr: [*]u8, len: u3
                     .rom_bank = 0,
                     .ram_bank = 0,
                     .mode = .rom_mode,
+                },
+            ),
+            inline .mbc2, .mbc2_battery => |variant| @unionInit(
+                MbcState,
+                @tagName(variant),
+                .{
+                    .mbc_ram_enable = false,
+                    .rom_bank = 0,
+                    .builtin_ram = try allocator.create([512]u8),
                 },
             ),
         },
@@ -525,6 +553,7 @@ fn read_mbc_rom(gb: *gameboy.State, addr: Addr) u8 {
         const bank = switch (rom.mbc) {
             .rom_only => 1,
             .mbc1, .mbc1_ram, .mbc1_ram_battery => |mbc1| mbc1.rom_bank,
+            .mbc2, .mbc2_battery => |mbc2| mbc2.rom_bank,
         };
         return rom.data[bank * @as(u32, 0x4000) + addr - MBC_ROM_START];
     }
@@ -538,18 +567,23 @@ fn read_vram(gb: *gameboy.State, addr: Addr) u8 {
 
 fn read_mbc_ram(gb: *gameboy.State, addr: Addr) u8 {
     if (gb.memory.rom) |rom| {
-        if (rom.mbc_ram.len == 0) {
-            return 0xff;
-        }
-
         const bank = switch (rom.mbc) {
             .rom_only => 0,
             .mbc1, .mbc1_ram, .mbc1_ram_battery => |mbc1| if (mbc1.mbc_ram_enable)
                 mbc1.ram_bank
             else
                 return 0xff,
+            .mbc2, .mbc2_battery => |mbc2| if (mbc2.mbc_ram_enable)
+                return mbc2.builtin_ram[(addr - MBC_RAM_START) & 0x1ff]
+            else
+                return 0xff,
         };
-        return rom.mbc_ram[bank * @as(u16, 0x2000) + addr - MBC_RAM_START];
+
+        if (rom.mbc_ram.len == 0) {
+            return 0xff;
+        } else {
+            return rom.mbc_ram[bank * @as(u16, 0x2000) + addr - MBC_RAM_START];
+        }
     }
 
     return 0xff;
@@ -680,6 +714,16 @@ fn write_mbc_rom(gb: *gameboy.State, addr: Addr, value: u8) void {
                 },
                 else => unreachable,
             },
+            .mbc2, .mbc2_battery => |*mbc2| if ((addr & 0x0100) != 0) {
+                var lo: u4 = @intCast(value & 0x0f);
+                if (lo == 0) {
+                    lo = 1;
+                }
+
+                mbc2.rom_bank = lo;
+            } else {
+                mbc2.mbc_ram_enable = (value & 0x0f) == 0x0a;
+            },
         }
     }
 }
@@ -690,18 +734,23 @@ fn write_vram(gb: *gameboy.State, addr: Addr, value: u8) void {
 
 fn write_mbc_ram(gb: *gameboy.State, addr: Addr, value: u8) void {
     if (gb.memory.rom) |*rom| {
-        if (rom.mbc_ram.len == 0) {
-            return;
-        }
-
         const bank = switch (rom.mbc) {
-            .rom_only => 0,
+            .rom_only => 1,
             .mbc1, .mbc1_ram, .mbc1_ram_battery => |mbc1| if (mbc1.mbc_ram_enable)
                 mbc1.ram_bank
             else
                 return,
+            .mbc2, .mbc2_battery => |mbc2| if (mbc2.mbc_ram_enable) {
+                mbc2.builtin_ram[(addr - MBC_RAM_START) & 0x1ff] = value;
+                return;
+            } else return,
         };
-        rom.mbc_ram[bank * @as(u16, 0x2000) + addr - MBC_RAM_START] = value;
+
+        if (rom.mbc_ram.len == 0) {
+            return;
+        } else {
+            rom.mbc_ram[bank * @as(u16, 0x2000) + addr - MBC_RAM_START] = value;
+        }
     }
 }
 
