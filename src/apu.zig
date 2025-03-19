@@ -89,7 +89,7 @@ pub const State = struct {
         /// Linear feedback shift register.
         lfsr: u15,
         /// Steps noise pattern.
-        frequency_timer: u13,
+        frequency_timer: u14,
         /// Shuts off the channel after a certain amount of time.
         length: struct {
             /// The time before the channel shuts off.
@@ -407,18 +407,18 @@ fn stepWaveChannel(gb: *gameboy.State) void {
 fn stepNoiseChannel(gb: *gameboy.State) void {
     if (gb.apu.ch4.frequency_timer == 0) {
         const divider = if (gb.memory.io.nr43.clock_divider > 0)
-            @as(u13, gb.memory.io.nr43.clock_divider) << 4
+            @as(u14, gb.memory.io.nr43.clock_divider) << 4
         else
             8;
         gb.apu.ch4.frequency_timer = divider << gb.memory.io.nr43.clock_shift;
 
-        const xor_result = (gb.apu.ch4.lfsr & 0b01) ^ ((gb.apu.ch4.lfsr & 0b10) >> 1);
-        gb.apu.ch4.lfsr = (xor_result << 14) | (gb.apu.ch4.lfsr >> 1);
+        // const xor_result = (gb.apu.ch4.lfsr & 0b01) ^ ((gb.apu.ch4.lfsr & 0b10) >> 1);
+        // gb.apu.ch4.lfsr = (xor_result << 14) | (gb.apu.ch4.lfsr >> 1);
 
-        if (gb.memory.io.nr43.lfsr_width == .bit7) {
-            gb.apu.ch4.lfsr &= ~(@as(u15, 1) << 6);
-            gb.apu.ch4.lfsr |= xor_result << 6;
-        }
+        // if (gb.memory.io.nr43.lfsr_width == .bit7) {
+        //     gb.apu.ch4.lfsr &= ~(@as(u15, 1) << 6);
+        //     gb.apu.ch4.lfsr |= xor_result << 6;
+        // }
     }
     gb.apu.ch4.frequency_timer -= 1;
 }
