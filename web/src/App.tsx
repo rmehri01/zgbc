@@ -4,11 +4,13 @@ import Display from "./Display";
 import { useZgbc } from "./wasm";
 import { useSetupInputs } from "./inputs";
 import { useSetupAudio } from "./audio";
+import { useRef } from "react";
 
 function App() {
-  const zgbc = useZgbc();
+  const gamepad = useRef<Gamepad | null>(null);
+  const zgbc = useZgbc(gamepad);
 
-  const { checkGamepadInputs } = useSetupInputs(zgbc);
+  const { checkGamepadInputs } = useSetupInputs(zgbc, gamepad);
   const { updateAudio } = useSetupAudio();
 
   return (

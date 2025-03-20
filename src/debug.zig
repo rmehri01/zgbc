@@ -1,9 +1,9 @@
-const std = @import("std");
-const allocator = std.heap.wasm_allocator;
-
 extern "env" fn consoleLog(ptr: [*]const u8, len: usize) void;
 extern "env" fn consoleLogJson(ptr: [*]const u8, len: usize) void;
 extern "env" fn consoleLogJsonDiff(oldPtr: [*]const u8, oldLen: usize, newPtr: [*]const u8, newLen: usize) void;
+
+const std = @import("std");
+const allocator = std.heap.wasm_allocator;
 
 pub fn print(comptime fmt: []const u8, args: anytype) void {
     const msg = std.fmt.allocPrint(allocator, fmt, args) catch return;

@@ -1,3 +1,5 @@
+extern "env" fn rumbleChanged(on: bool) void;
+
 const std = @import("std");
 const allocator = std.heap.wasm_allocator;
 
@@ -25,7 +27,7 @@ export fn deinit(gb: *gameboy.State) void {
 }
 
 export fn loadROM(gb: *gameboy.State, ptr: [*]u8, len: u32) void {
-    memory.loadROM(allocator, gb, ptr, len) catch return;
+    memory.loadROM(allocator, gb, ptr, len, rumbleChanged) catch return;
 }
 
 /// Try to run for the given amount of `cycles`, returning the delta.

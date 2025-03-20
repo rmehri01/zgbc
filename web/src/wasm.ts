@@ -103,7 +103,7 @@ function createZgbc(raw: ZgbcRaw): Zgbc {
   };
 }
 
-export function useZgbc(): Zgbc | null {
+export function useZgbc(gamepad: React.RefObject<Gamepad | null>): Zgbc | null {
   const [zgbc, setZgbc] = useState<Zgbc | null>(null);
 
   useEffect(() => {
@@ -113,6 +113,41 @@ export function useZgbc(): Zgbc | null {
       const decodeString = (ptr: GameboyPtr, len: number): string => {
         const bytes = new Uint8Array(raw.memory.buffer, ptr, len);
         return new TextDecoder("utf8").decode(bytes);
+      };
+
+      let vibrationInterval: number | undefined = undefined;
+      const rumbleChanged = (on: boolean) => {
+        if (on) {
+          if (window.navigator.vibrate || gamepad.current !== null) {
+            const gamepadVibrate = () => {
+              if (window.navigator.vibrate) {
+                window.navigator.vibrate(1000);
+              }
+
+              if (gamepad.current !== null) {
+                void gamepad.current.vibrationActuator?.playEffect(
+                  "dual-rumble",
+                  {
+                    startDelay: 0,
+                    duration: 1000,
+                    weakMagnitude: 0.8,
+                    strongMagnitude: 0.8,
+                  },
+                );
+              }
+            };
+            vibrationInterval = setInterval(gamepadVibrate, 1000);
+            gamepadVibrate();
+          }
+        } else {
+          clearInterval(vibrationInterval);
+          if (window.navigator.vibrate) {
+            window.navigator.vibrate(0);
+          }
+          if (gamepad.current !== null) {
+            void gamepad.current.vibrationActuator?.reset();
+          }
+        }
       };
 
       const instance = await init({
@@ -139,6 +174,7 @@ export function useZgbc(): Zgbc | null {
             );
             console.dir(diffObj);
           },
+          rumbleChanged,
         },
       });
       raw = instance.exports as unknown as ZgbcRaw;
@@ -147,7 +183,7 @@ export function useZgbc(): Zgbc | null {
     }
 
     void run();
-  }, []);
+  }, [gamepad]);
 
   return zgbc;
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Button, Zgbc } from "./wasm";
 
 const KEY_BUTTON_MAP: Record<string, Button> = {
@@ -23,29 +23,52 @@ const GAMEPAD_BUTTON_MAP = new Map<number, Button>([
   [1, Button.A],
 ]);
 
-enum ButtonState {
-  unpressed,
-  pressed,
+enum InputSource {
+  Keyboard,
+  Gamepad,
 }
 
-export function useSetupInputs(zgbc: Zgbc | null): {
+enum ButtonState {
+  Unpressed,
+  Pressed,
+}
+
+export function useSetupInputs(
+  zgbc: Zgbc | null,
+  gamepad: React.RefObject<Gamepad | null>,
+): {
   checkGamepadInputs: () => void;
 } {
-  const buttonStateMap = useRef<Record<Button, ButtonState>>({
-    [Button.Right]: ButtonState.unpressed,
-    [Button.Left]: ButtonState.unpressed,
-    [Button.Up]: ButtonState.unpressed,
-    [Button.Down]: ButtonState.unpressed,
-    [Button.A]: ButtonState.unpressed,
-    [Button.B]: ButtonState.unpressed,
-    [Button.Select]: ButtonState.unpressed,
-    [Button.Start]: ButtonState.unpressed,
-  });
+  const buttonStateMap = useMemo(
+    () => ({
+      [Button.Right]: ButtonState.Unpressed,
+      [Button.Left]: ButtonState.Unpressed,
+      [Button.Up]: ButtonState.Unpressed,
+      [Button.Down]: ButtonState.Unpressed,
+      [Button.A]: ButtonState.Unpressed,
+      [Button.B]: ButtonState.Unpressed,
+      [Button.Select]: ButtonState.Unpressed,
+      [Button.Start]: ButtonState.Unpressed,
+    }),
+    [],
+  );
+  const initialInputStateMap = useMemo(
+    () => ({
+      [InputSource.Keyboard]: structuredClone(buttonStateMap),
+      [InputSource.Gamepad]: structuredClone(buttonStateMap),
+    }),
+    [buttonStateMap],
+  );
+  const inputStateMap = useRef<
+    Record<InputSource, Record<Button, ButtonState>>
+  >(structuredClone(initialInputStateMap));
 
   const pressButton = useCallback(
-    (button: Button) => {
-      if (buttonStateMap.current[button] === ButtonState.unpressed) {
-        buttonStateMap.current[button] = ButtonState.pressed;
+    (inputSource: InputSource, button: Button) => {
+      if (
+        inputStateMap.current[inputSource][button] === ButtonState.Unpressed
+      ) {
+        inputStateMap.current[inputSource][button] = ButtonState.Pressed;
         zgbc?.buttonPress(button);
       }
     },
@@ -53,9 +76,9 @@ export function useSetupInputs(zgbc: Zgbc | null): {
   );
 
   const releaseButton = useCallback(
-    (button: Button) => {
-      if (buttonStateMap.current[button] === ButtonState.pressed) {
-        buttonStateMap.current[button] = ButtonState.unpressed;
+    (inputSource: InputSource, button: Button) => {
+      if (inputStateMap.current[inputSource][button] === ButtonState.Pressed) {
+        inputStateMap.current[inputSource][button] = ButtonState.Unpressed;
         zgbc?.buttonRelease(button);
       }
     },
@@ -67,19 +90,17 @@ export function useSetupInputs(zgbc: Zgbc | null): {
       const button = KEY_BUTTON_MAP[e.code];
       if (button !== undefined) {
         e.preventDefault();
-        pressButton(button);
+        pressButton(InputSource.Keyboard, button);
       }
     };
     window.onkeyup = (e) => {
       const button = KEY_BUTTON_MAP[e.code];
       if (button !== undefined) {
         e.preventDefault();
-        releaseButton(button);
+        releaseButton(InputSource.Keyboard, button);
       }
     };
   }, [zgbc, pressButton, releaseButton]);
-
-  const gamepad = useRef<Gamepad | null>(null);
 
   useEffect(() => {
     window.addEventListener("gamepadconnected", (e) => {
@@ -87,18 +108,23 @@ export function useSetupInputs(zgbc: Zgbc | null): {
     });
     window.addEventListener("gamepaddisconnected", () => {
       gamepad.current = null;
+      inputStateMap.current = structuredClone(initialInputStateMap);
     });
-  }, [zgbc]);
+  }, [zgbc, gamepad, initialInputStateMap]);
 
   return {
     checkGamepadInputs: () => {
-      if (!gamepad.current) return;
+      if (gamepad.current === null) return;
+
+      /// refresh gamepad state since this doesn't automatically happen on chrome
+      gamepad.current = window.navigator.getGamepads()[gamepad.current.index];
+      if (gamepad.current === null) return;
 
       for (const [idx, button] of GAMEPAD_BUTTON_MAP) {
         if (gamepad.current.buttons[idx].pressed) {
-          pressButton(button);
+          pressButton(InputSource.Gamepad, button);
         } else {
-          releaseButton(button);
+          releaseButton(InputSource.Gamepad, button);
         }
       }
     },
