@@ -8,7 +8,7 @@ export default function Display({
 }: {
   zgbc: Zgbc | null;
   checkGamepadInputs: () => void;
-  updateAudio: (zgbc: Zgbc) => void;
+  updateAudio: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -51,7 +51,7 @@ export default function Display({
         context.putImageData(imageData, 0, 0);
 
         // update audio
-        updateAudio(zgbc);
+        updateAudio();
       }
 
       animationFrameId = window.requestAnimationFrame(renderFrame);

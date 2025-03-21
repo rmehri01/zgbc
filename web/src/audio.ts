@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Zgbc } from "./wasm";
 
 const SAMPLE_RATE = 65536;
@@ -93,7 +93,7 @@ interface AudioChunk {
   right: Float32Array;
 }
 
-export function useSetupAudio(): { updateAudio: (zgbc: Zgbc) => void } {
+export function useSetupAudio(zgbc: Zgbc | null): { updateAudio: () => void } {
   const soundBufferRef = useRef<SoundBuffer | null>(null);
 
   const initSoundBuffer = () => {
@@ -115,18 +115,20 @@ export function useSetupAudio(): { updateAudio: (zgbc: Zgbc) => void } {
     };
   }, []);
 
-  return {
-    updateAudio: (zgbc: Zgbc) => {
-      if (!soundBufferRef.current) return;
+  const updateAudio = useCallback(() => {
+    if (!soundBufferRef.current || !zgbc) return;
 
-      const leftAudioChunk = zgbc.readLeftAudioChannel();
-      const rightAudioChunk = zgbc.readRightAudioChannel();
-      if (leftAudioChunk.length !== 0) {
-        soundBufferRef.current.addChunk({
-          left: leftAudioChunk,
-          right: rightAudioChunk,
-        });
-      }
-    },
+    const leftAudioChunk = zgbc.readLeftAudioChannel();
+    const rightAudioChunk = zgbc.readRightAudioChannel();
+    if (leftAudioChunk.length !== 0) {
+      soundBufferRef.current.addChunk({
+        left: leftAudioChunk,
+        right: rightAudioChunk,
+      });
+    }
+  }, [zgbc]);
+
+  return {
+    updateAudio,
   };
 }

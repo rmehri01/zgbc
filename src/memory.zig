@@ -24,6 +24,8 @@ pub const RAM_START = 0xc000;
 pub const OAM_START = 0xfe00;
 pub const HRAM_START = 0xff80;
 
+pub const MAX_TITLE_LEN = 15;
+pub const ROM_HEADER_TITLE_START = 0x134;
 pub const ROM_HEADER_CARTRIDGE_TYPE = 0x147;
 pub const ROM_HEADER_RAM_SIZE = 0x149;
 
@@ -37,6 +39,8 @@ pub const State = struct {
     rom: ?struct {
         /// The raw bytes of the rom.
         data: []const u8,
+        /// The title of the rom in all caps ASCII.
+        title: []const u8,
         /// State of the memory bank controller.
         mbc: MbcState,
         /// External RAM in the cartridge.
@@ -454,6 +458,30 @@ pub const MbcState = union(CartridgeType) {
     mbc5_rumble: Mbc5,
     mbc5_rumble_ram: Mbc5,
     mbc5_rumble_ram_battery: Mbc5,
+
+    pub fn has_battery(self: @This()) bool {
+        return switch (self) {
+            .rom_only,
+            .mbc1,
+            .mbc1_ram,
+            .mbc2,
+            .mbc3,
+            .mbc3_ram,
+            .mbc5,
+            .mbc5_ram,
+            .mbc5_rumble,
+            .mbc5_rumble_ram,
+            => false,
+            .mbc1_ram_battery,
+            .mbc2_battery,
+            .mbc3_timer_battery,
+            .mbc3_timer_ram_battery,
+            .mbc3_ram_battery,
+            .mbc5_ram_battery,
+            .mbc5_rumble_ram_battery,
+            => true,
+        };
+    }
 };
 
 /// Determines the type of mapper.
@@ -541,6 +569,11 @@ pub fn loadROM(
     rumble_changed = rumble_changed_callback;
     gb.memory.rom = .{
         .data = ptr[0..len],
+        .title = value: {
+            const title_ptr: [*:0]u8 = @ptrCast(&ptr[ROM_HEADER_TITLE_START]);
+            const title_len = mem.len(title_ptr);
+            break :value title_ptr[0..@min(MAX_TITLE_LEN, title_len)];
+        },
         .mbc = switch (@as(CartridgeType, @enumFromInt(ptr[ROM_HEADER_CARTRIDGE_TYPE]))) {
             .rom_only => .{ .rom_only = .{} },
             inline .mbc1, .mbc1_ram, .mbc1_ram_battery => |variant| @unionInit(

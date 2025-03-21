@@ -10,10 +10,19 @@ const ppu = zgbc.ppu;
 const joypad = zgbc.joypad;
 const memory = zgbc.memory;
 
+pub const ByteArray = extern struct {
+    ptr: [*]const u8,
+    len: usize,
+};
+
 export fn allocUint8Array(len: u32) [*]const u8 {
     const slice = allocator.alloc(u8, len) catch
         @panic("failed to allocate memory");
     return slice.ptr;
+}
+
+export fn freeUint8Array(ptr: [*]const u8, len: u32) void {
+    allocator.free(ptr[0..len]);
 }
 
 export fn init() ?*gameboy.State {
@@ -28,6 +37,61 @@ export fn deinit(gb: *gameboy.State) void {
 
 export fn loadROM(gb: *gameboy.State, ptr: [*]u8, len: u32) void {
     memory.loadROM(allocator, gb, ptr, len, rumbleChanged) catch return;
+}
+
+var title: ?ByteArray = null;
+export fn romTitle(gb: *gameboy.State) ?*ByteArray {
+    if (gb.memory.rom) |rom| {
+        title = .{
+            .ptr = rom.title.ptr,
+            .len = rom.title.len,
+        };
+    }
+
+    return &(title orelse return null);
+}
+
+export fn supportsSaving(gb: *gameboy.State) bool {
+    if (gb.memory.rom) |rom| {
+        return rom.mbc.has_battery();
+    }
+
+    return false;
+}
+
+var sram: ?ByteArray = null;
+export fn getBatteryBackedRAM(gb: *gameboy.State) ?*ByteArray {
+    if (gb.memory.rom) |rom| {
+        if (rom.mbc.has_battery()) {
+            switch (rom.mbc) {
+                .mbc2_battery => |mbc2| {
+                    sram = .{
+                        .ptr = mbc2.builtin_ram,
+                        .len = mbc2.builtin_ram.len,
+                    };
+                },
+                else => {
+                    sram = .{
+                        .ptr = rom.mbc_ram.ptr,
+                        .len = rom.mbc_ram.len,
+                    };
+                },
+            }
+        }
+    }
+
+    return &(sram orelse return null);
+}
+
+export fn setBatteryBackedRAM(gb: *gameboy.State, ptr: [*]u8, len: u32) void {
+    if (gb.memory.rom) |*rom| {
+        if (rom.mbc.has_battery()) {
+            switch (rom.mbc) {
+                .mbc2_battery => |*mbc2| @memcpy(mbc2.builtin_ram, ptr[0..len]),
+                else => @memcpy(rom.mbc_ram, ptr[0..len]),
+            }
+        }
+    }
 }
 
 /// Try to run for the given amount of `cycles`, returning the delta.

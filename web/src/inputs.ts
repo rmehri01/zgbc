@@ -65,11 +65,13 @@ export function useSetupInputs(
 
   const pressButton = useCallback(
     (inputSource: InputSource, button: Button) => {
+      if (!zgbc) return;
+
       if (
         inputStateMap.current[inputSource][button] === ButtonState.Unpressed
       ) {
         inputStateMap.current[inputSource][button] = ButtonState.Pressed;
-        zgbc?.buttonPress(button);
+        zgbc.buttonPress(button);
       }
     },
     [zgbc],
@@ -77,9 +79,11 @@ export function useSetupInputs(
 
   const releaseButton = useCallback(
     (inputSource: InputSource, button: Button) => {
+      if (!zgbc) return;
+
       if (inputStateMap.current[inputSource][button] === ButtonState.Pressed) {
         inputStateMap.current[inputSource][button] = ButtonState.Unpressed;
-        zgbc?.buttonRelease(button);
+        zgbc.buttonRelease(button);
       }
     },
     [zgbc],
@@ -100,7 +104,7 @@ export function useSetupInputs(
         releaseButton(InputSource.Keyboard, button);
       }
     };
-  }, [zgbc, pressButton, releaseButton]);
+  }, [pressButton, releaseButton]);
 
   useEffect(() => {
     window.addEventListener("gamepadconnected", (e) => {
@@ -110,7 +114,7 @@ export function useSetupInputs(
       gamepad.current = null;
       inputStateMap.current = structuredClone(initialInputStateMap);
     });
-  }, [zgbc, gamepad, initialInputStateMap]);
+  }, [gamepad, initialInputStateMap]);
 
   return {
     checkGamepadInputs: () => {
