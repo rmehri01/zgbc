@@ -189,7 +189,10 @@ pub const State = struct {
             /// Whether objects are displayed or not.
             obj_enable: bool,
             /// Controls the size of objects (1 or 2 tiles vertically).
-            obj_size: bool,
+            obj_size: enum(u1) {
+                bit8 = 0,
+                bit16 = 1,
+            },
             /// If the bit is clear, the background uses tilemap 0x9800, otherwise
             /// tilemap 0x9c00.
             bg_tile_map_area: u1,
@@ -371,7 +374,7 @@ pub const State = struct {
                 .lcdc = .{
                     .bg_window_enable_priority = false,
                     .obj_enable = false,
-                    .obj_size = false,
+                    .obj_size = .bit8,
                     .bg_tile_map_area = 0,
                     .bg_window_tile_data_area = .signed,
                     .window_enable = false,

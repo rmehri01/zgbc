@@ -249,8 +249,12 @@ fn renderLine(gb: *gameboy.State) void {
 
             // TODO: naive
             // TODO: height not always 8
+            const obj_height: u5 = switch (gb.memory.io.lcdc.obj_size) {
+                .bit8 => 8,
+                .bit16 => 16,
+            };
             if (object.y_pos <= gb.memory.io.ly + 16 and
-                gb.memory.io.ly + 16 < object.y_pos + 8)
+                gb.memory.io.ly + 16 < object.y_pos + obj_height)
             {
                 const palette = switch (object.flags.dmg_palette) {
                     0 => gb.memory.io.obp0,
@@ -270,7 +274,10 @@ fn renderLine(gb: *gameboy.State) void {
                         var tile_addr = memory.TILE_BLOCK0_START + @as(u16, tile_id) * 16;
 
                         const y_pixel_off = gb.memory.io.ly + 16 - object.y_pos;
-                        tile_addr += (if (object.flags.y_flip) 7 - y_pixel_off else y_pixel_off) * 2;
+                        tile_addr += (if (object.flags.y_flip)
+                            obj_height - 1 - y_pixel_off
+                        else
+                            y_pixel_off) * 2;
 
                         const tile_data1 = gb.memory.vram[tile_addr - memory.VRAM_START];
                         const tile_data2 = gb.memory.vram[tile_addr + 1 - memory.VRAM_START];
