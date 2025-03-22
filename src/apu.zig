@@ -237,28 +237,29 @@ pub fn step(gb: *gameboy.State) void {
         const value, const overflowed = @addWithOverflow(gb.apu.frame_sequencer.clock, 1);
         gb.apu.frame_sequencer.clock = value;
         if (overflowed == 1) {
+            const all_channels = .{ .ch1, .ch2, .ch3, .ch4 };
             switch (gb.apu.frame_sequencer.step) {
                 0 => {
-                    inline for (.{ .ch1, .ch2, .ch3, .ch4 }) |channel| {
+                    inline for (all_channels) |channel| {
                         stepLength(gb, channel);
                     }
                 },
                 1 => {},
                 2 => {
-                    inline for (.{ .ch1, .ch2, .ch3, .ch4 }) |channel| {
+                    inline for (all_channels) |channel| {
                         stepLength(gb, channel);
                     }
                     stepSweep(gb);
                 },
                 3 => {},
                 4 => {
-                    inline for (.{ .ch1, .ch2, .ch3, .ch4 }) |channel| {
+                    inline for (all_channels) |channel| {
                         stepLength(gb, channel);
                     }
                 },
                 5 => {},
                 6 => {
-                    inline for (.{ .ch1, .ch2, .ch3, .ch4 }) |channel| {
+                    inline for (all_channels) |channel| {
                         stepLength(gb, channel);
                     }
                     stepSweep(gb);
@@ -412,13 +413,13 @@ fn stepNoiseChannel(gb: *gameboy.State) void {
             8;
         gb.apu.ch4.frequency_timer = divider << gb.memory.io.nr43.clock_shift;
 
-        // const xor_result = (gb.apu.ch4.lfsr & 0b01) ^ ((gb.apu.ch4.lfsr & 0b10) >> 1);
-        // gb.apu.ch4.lfsr = (xor_result << 14) | (gb.apu.ch4.lfsr >> 1);
+        const xor_result = (gb.apu.ch4.lfsr & 0b01) ^ ((gb.apu.ch4.lfsr & 0b10) >> 1);
+        gb.apu.ch4.lfsr = (xor_result << 14) | (gb.apu.ch4.lfsr >> 1);
 
-        // if (gb.memory.io.nr43.lfsr_width == .bit7) {
-        //     gb.apu.ch4.lfsr &= ~(@as(u15, 1) << 6);
-        //     gb.apu.ch4.lfsr |= xor_result << 6;
-        // }
+        if (gb.memory.io.nr43.lfsr_width == .bit7) {
+            gb.apu.ch4.lfsr &= ~(@as(u15, 1) << 6);
+            gb.apu.ch4.lfsr |= xor_result << 6;
+        }
     }
     gb.apu.ch4.frequency_timer -= 1;
 }
