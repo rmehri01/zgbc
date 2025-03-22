@@ -20,8 +20,14 @@ pub const State = struct {
     apu: apu.State,
 
     pub fn tick(self: *@This()) void {
-        // TODO: naive
+        if (self.timer.pending_cycles != 0) {
+            ppu.step(self);
+            apu.step(self);
+            timer.step(self);
+            self.timer.pending_cycles = 0;
+        }
         self.timer.pending_cycles += timer.T_CYCLES_PER_M_CYCLE;
+        self.cpu.cycles_since_run += timer.T_CYCLES_PER_M_CYCLE;
     }
 
     pub fn init(allocator: mem.Allocator) !@This() {

@@ -22,15 +22,21 @@ pub const State = struct {
     /// The ei instruction has a delayed effect that will enable interrupt
     /// handling after one machine cycle.
     scheduled_ei: bool,
+    /// The halt bug will cause the byte after halt to be read a second time.
+    halt_bug: bool,
     /// State of the registers in the gameboy.
     registers: RegisterFile,
+    /// How many cycles have passed since the last call to `cpu.step`.
+    cycles_since_run: u8,
 
     pub fn init() @This() {
         return @This(){
             .ime = false,
             .halted = false,
             .scheduled_ei = false,
+            .halt_bug = false,
             .registers = .{ .named16 = .{ .af = 0, .bc = 0, .de = 0, .hl = 0, .sp = 0, .pc = 0 } },
+            .cycles_since_run = 0,
         };
     }
 };
@@ -99,63 +105,47 @@ pub const Flags = packed struct(u8) {
 
 /// Execute a single step of the cpu.
 pub fn step(gb: *gameboy.State) u8 {
-    var cycles: u8 = 0;
-
     fetch_execute(gb);
-    // TODO: this should be inside tick
-    ppu.step(gb);
-    apu.step(gb);
-    timer.step(gb);
-    cycles += gb.timer.pending_cycles;
-    gb.timer.pending_cycles = 0;
 
-    if (gb.cpu.halted and
-        !gb.cpu.ime and
-        ((gb.memory.io.ie.v_blank and gb.memory.io.intf.v_blank) or
-            (gb.memory.io.ie.lcd and gb.memory.io.intf.lcd) or
-            (gb.memory.io.ie.timer and gb.memory.io.intf.timer) or
-            (gb.memory.io.ie.serial and gb.memory.io.intf.serial) or
-            (gb.memory.io.ie.joypad and gb.memory.io.intf.joypad)))
-    {
+    if (gb.memory.io.ie.v_blank and gb.memory.io.intf.v_blank) {
         gb.cpu.halted = false;
-    }
-
-    if (gb.cpu.ime) {
-        if (gb.memory.io.ie.v_blank and gb.memory.io.intf.v_blank) {
-            gb.cpu.halted = false;
+        if (gb.cpu.ime) {
             gb.memory.io.intf.v_blank = false;
             gb.cpu.ime = false;
             rst(gb, 0x40);
-        } else if (gb.memory.io.ie.lcd and gb.memory.io.intf.lcd) {
-            gb.cpu.halted = false;
+        }
+    } else if (gb.memory.io.ie.lcd and gb.memory.io.intf.lcd) {
+        gb.cpu.halted = false;
+        if (gb.cpu.ime) {
             gb.memory.io.intf.lcd = false;
             gb.cpu.ime = false;
             rst(gb, 0x48);
-        } else if (gb.memory.io.ie.timer and gb.memory.io.intf.timer) {
-            gb.cpu.halted = false;
+        }
+    } else if (gb.memory.io.ie.timer and gb.memory.io.intf.timer) {
+        gb.cpu.halted = false;
+        if (gb.cpu.ime) {
             gb.memory.io.intf.timer = false;
             gb.cpu.ime = false;
             rst(gb, 0x50);
-        } else if (gb.memory.io.ie.serial and gb.memory.io.intf.serial) {
-            gb.cpu.halted = false;
+        }
+    } else if (gb.memory.io.ie.serial and gb.memory.io.intf.serial) {
+        gb.cpu.halted = false;
+        if (gb.cpu.ime) {
             gb.memory.io.intf.serial = false;
             gb.cpu.ime = false;
             rst(gb, 0x58);
-        } else if (gb.memory.io.ie.joypad and gb.memory.io.intf.joypad) {
-            gb.cpu.halted = false;
+        }
+    } else if (gb.memory.io.ie.joypad and gb.memory.io.intf.joypad) {
+        gb.cpu.halted = false;
+        if (gb.cpu.ime) {
             gb.memory.io.intf.joypad = false;
             gb.cpu.ime = false;
             rst(gb, 0x60);
         }
     }
 
-    ppu.step(gb);
-    apu.step(gb);
-    timer.step(gb);
-    cycles += gb.timer.pending_cycles;
-    gb.timer.pending_cycles = 0;
-
-    return cycles;
+    defer gb.cpu.cycles_since_run = 0;
+    return gb.cpu.cycles_since_run;
 }
 
 /// Fetch, decode, and execute a single CPU instruction.
@@ -174,6 +164,11 @@ fn fetch_execute(gb: *gameboy.State) void {
     };
 
     const op_code = fetch8(gb);
+    if (gb.cpu.halt_bug) {
+        @branchHint(.unlikely);
+        gb.cpu.registers.named16.pc -%= 1;
+        gb.cpu.halt_bug = false;
+    }
     switch (op_code) {
         0x00 => nop(),
         0x01 => ld_rr_d16(gb, &gb.cpu.registers.named16.bc),
@@ -692,6 +687,17 @@ fn ld_dhl_r(gb: *gameboy.State, r: *const u8) void {
 
 fn halt(gb: *gameboy.State) void {
     gb.cpu.halted = true;
+
+    // halt bug
+    if (!gb.cpu.ime and
+        ((gb.memory.io.ie.v_blank and gb.memory.io.intf.v_blank) or
+            (gb.memory.io.ie.lcd and gb.memory.io.intf.lcd) or
+            (gb.memory.io.ie.timer and gb.memory.io.intf.timer) or
+            (gb.memory.io.ie.serial and gb.memory.io.intf.serial) or
+            (gb.memory.io.ie.joypad and gb.memory.io.intf.joypad)))
+    {
+        gb.cpu.halt_bug = true;
+    }
 }
 
 /// Add the contents of register `r` or the memory pointed to by `r` to the

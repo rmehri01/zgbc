@@ -155,7 +155,9 @@ pub fn step(gb: *gameboy.State) void {
                     gb.memory.io.ly = 0;
                     gb.ppu.window_line = 0;
 
-                    if (gb.memory.io.ly == gb.memory.io.lyc) {
+                    if (gb.memory.io.stat.lyc_int_select and
+                        gb.memory.io.ly == gb.memory.io.lyc)
+                    {
                         gb.memory.io.intf.lcd = true;
                         gb.memory.io.stat.lyc_eq = true;
                     }
@@ -248,7 +250,6 @@ fn renderLine(gb: *gameboy.State) void {
             );
 
             // TODO: naive
-            // TODO: height not always 8
             const obj_height: u5 = switch (gb.memory.io.lcdc.obj_size) {
                 .bit8 => 8,
                 .bit16 => 16,
