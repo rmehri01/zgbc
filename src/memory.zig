@@ -513,14 +513,9 @@ pub const Mbc1 = struct {
     /// Enables external RAM.
     mbc_ram_enable: bool,
     /// Which ROM bank to read from.
-    rom_bank: u7,
+    rom_bank: u5,
     /// Which RAM bank to read from.
     ram_bank: u2,
-    /// Determines whether to use space as extra rom or extra external ram.
-    mode: enum(u1) {
-        rom = 0,
-        ram = 1,
-    },
 };
 
 /// Register state for mbc 2.
@@ -584,9 +579,8 @@ pub fn loadROM(
                 @tagName(variant),
                 .{
                     .mbc_ram_enable = false,
-                    .rom_bank = 0,
+                    .rom_bank = 1,
                     .ram_bank = 0,
-                    .mode = .rom,
                 },
             ),
             inline .mbc2, .mbc2_battery => |variant| @unionInit(
@@ -594,7 +588,7 @@ pub fn loadROM(
                 @tagName(variant),
                 .{
                     .mbc_ram_enable = false,
-                    .rom_bank = 0,
+                    .rom_bank = 1,
                     .builtin_ram = try allocator.create([512]u8),
                 },
             ),
@@ -608,7 +602,7 @@ pub fn loadROM(
                 @tagName(variant),
                 .{
                     .mbc_ram_enable = false,
-                    .rom_bank = 0,
+                    .rom_bank = 1,
                     .ram_bank = 0,
                     .mode = .ram,
                 },
@@ -864,24 +858,22 @@ fn write_mbc_rom(gb: *gameboy.State, addr: Addr, value: u8) void {
             .mbc1, .mbc1_ram, .mbc1_ram_battery => |*mbc1| switch ((addr & 0xf000) >> 12) {
                 0x0, 0x1 => mbc1.mbc_ram_enable = (value & 0x0f) == 0x0a,
                 0x2, 0x3 => {
-                    var lo: u7 = @intCast(value & 0x1f);
+                    var lo: u5 = @intCast(value & 0x1f);
                     if (lo == 0) {
                         lo = 1;
                     }
+                    lo &= @intCast((rom.data.len / 0x4000) - 1);
 
-                    mbc1.rom_bank = (mbc1.rom_bank & 0x60) | lo;
+                    mbc1.rom_bank = lo;
                 },
-                0x4, 0x5 => switch (mbc1.mode) {
-                    .rom => mbc1.rom_bank =
-                        @as(u7, @intCast(value & 0b11)) << 5 | (mbc1.rom_bank & 0x1f),
-                    .ram => {
-                        const ram_bank: u2 = @intCast(value & 0b11);
-                        if (rom.mbc_ram.len / 0x2000 <= ram_bank) {
-                            return;
-                        }
-                        mbc1.ram_bank = ram_bank;
-                    },
+                0x4, 0x5 => {
+                    const ram_bank: u2 = @intCast(value & 0b11);
+                    if (rom.mbc_ram.len / 0x2000 <= ram_bank) {
+                        return;
+                    }
+                    mbc1.ram_bank = ram_bank;
                 },
+                6, 7 => {},
                 else => unreachable,
             },
             .mbc2, .mbc2_battery => |*mbc2| if ((addr & 0x0100) != 0) {
@@ -889,6 +881,7 @@ fn write_mbc_rom(gb: *gameboy.State, addr: Addr, value: u8) void {
                 if (lo == 0) {
                     lo = 1;
                 }
+                lo &= @intCast((rom.data.len / 0x4000) - 1);
 
                 mbc2.rom_bank = lo;
             } else {
@@ -906,6 +899,7 @@ fn write_mbc_rom(gb: *gameboy.State, addr: Addr, value: u8) void {
                     if (lo == 0) {
                         lo = 1;
                     }
+                    lo &= @intCast((rom.data.len / 0x4000) - 1);
 
                     mbc3.rom_bank = lo;
                 },
