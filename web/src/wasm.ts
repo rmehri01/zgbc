@@ -21,6 +21,7 @@ interface ZgbcRaw {
 
   init: () => GameboyPtr;
   deinit: (gb: GameboyPtr) => void;
+  reset: (gb: GameboyPtr) => void;
   loadROM: (gb: GameboyPtr, ptr: GameboyPtr, len: number) => void;
   romTitle: (gb: GameboyPtr) => GameboyPtr;
   supportsSaving: (gb: GameboyPtr) => boolean;
@@ -69,11 +70,7 @@ export interface Zgbc {
   readRightAudioChannel: () => Float32Array;
 }
 
-function createZgbc(
-  raw: ZgbcRaw,
-  setZgbc: React.Dispatch<React.SetStateAction<Zgbc | null>>,
-  rom?: Uint8Array,
-): Zgbc {
+function createZgbc(raw: ZgbcRaw, onLoad: () => void): Zgbc {
   const gb = raw.init();
   const leftAudioChannelPtr = raw.allocUint8Array(AUDIO_BUFFER_BYTES);
   const rightAudioChannelPtr = raw.allocUint8Array(AUDIO_BUFFER_BYTES);
@@ -98,31 +95,6 @@ function createZgbc(
     ptr: GameboyPtr;
     len: number;
   };
-  if (rom) {
-    const romBufPtr = raw.allocUint8Array(rom.length);
-    romBuf = {
-      ptr: romBufPtr,
-      len: rom.length,
-    };
-
-    const romArray = new Uint8Array(raw.memory.buffer, romBuf.ptr, romBuf.len);
-    romArray.set(rom);
-    raw.loadROM(gb, romBuf.ptr, romBuf.len);
-
-    const title = romTitle();
-    const ram = getSaveRAM(title);
-    if (ram) {
-      const ramArrayPtr = raw.allocUint8Array(ram.length);
-      const ramArray = new Uint8Array(
-        raw.memory.buffer,
-        ramArrayPtr,
-        ram.length,
-      );
-      ramArray.set(ram);
-      raw.setBatteryBackedRAM(gb, ramArrayPtr, ram.length);
-      raw.freeUint8Array(ramArrayPtr, ram.length);
-    }
-  }
 
   return {
     loadROM: (rom) => {
@@ -132,14 +104,39 @@ function createZgbc(
         setSaveRAM(title, ram);
       }
 
-      raw.deinit(gb);
-      raw.freeUint8Array(leftAudioChannelPtr, AUDIO_BUFFER_BYTES);
-      raw.freeUint8Array(rightAudioChannelPtr, AUDIO_BUFFER_BYTES);
+      raw.reset(gb);
       if (romBuf) {
         raw.freeUint8Array(romBuf.ptr, romBuf.len);
       }
 
-      setZgbc(createZgbc(raw, setZgbc, rom));
+      const romBufPtr = raw.allocUint8Array(rom.length);
+      romBuf = {
+        ptr: romBufPtr,
+        len: rom.length,
+      };
+
+      const romArray = new Uint8Array(
+        raw.memory.buffer,
+        romBuf.ptr,
+        romBuf.len,
+      );
+      romArray.set(rom);
+      raw.loadROM(gb, romBuf.ptr, romBuf.len);
+
+      const title = romTitle();
+      const ram = getSaveRAM(title);
+      if (ram) {
+        const ramArrayPtr = raw.allocUint8Array(ram.length);
+        const ramArray = new Uint8Array(
+          raw.memory.buffer,
+          ramArrayPtr,
+          ram.length,
+        );
+        ramArray.set(ram);
+        raw.setBatteryBackedRAM(gb, ramArrayPtr, ram.length);
+        raw.freeUint8Array(ramArrayPtr, ram.length);
+      }
+      onLoad();
     },
     romTitle,
     supportsSaving,
@@ -250,7 +247,7 @@ export function useZgbc(gamepad: React.RefObject<Gamepad | null>): Zgbc | null {
       });
       raw = instance.exports as unknown as ZgbcRaw;
 
-      const initialZgbc = createZgbc(raw, setZgbc);
+      const initialZgbc = createZgbc(raw, () => setZgbc(initialZgbc));
       setZgbc(initialZgbc);
     }
 

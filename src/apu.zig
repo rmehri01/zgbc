@@ -104,6 +104,17 @@ pub const State = struct {
     r_chan: OutputBuffer,
 
     pub fn init() @This() {
+        const l_chan = OutputBuffer.init();
+        const r_chan = OutputBuffer.init();
+
+        return @This().initWithMem(l_chan, r_chan);
+    }
+
+    pub fn reset(self: @This()) @This() {
+        return @This().initWithMem(self.l_chan, self.r_chan);
+    }
+
+    fn initWithMem(l_chan: OutputBuffer, r_chan: OutputBuffer) @This() {
         return @This(){
             .frame_sequencer = .{
                 .clock = 0,
@@ -160,8 +171,8 @@ pub const State = struct {
                     .value = 0,
                 },
             },
-            .l_chan = OutputBuffer.init(),
-            .r_chan = OutputBuffer.init(),
+            .l_chan = l_chan,
+            .r_chan = r_chan,
         };
     }
 };
@@ -426,7 +437,7 @@ fn stepNoiseChannel(gb: *gameboy.State) void {
 
 /// Updates the length timer and checks if enough time has elapsed to
 /// shut the channel off.
-fn stepLength(gb: *gameboy.State, comptime channel: AnyChannel) void {
+pub fn stepLength(gb: *gameboy.State, comptime channel: AnyChannel) void {
     const chan_state = switch (channel) {
         .ch1 => &gb.apu.ch1,
         .ch2 => &gb.apu.ch2,

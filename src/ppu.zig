@@ -20,15 +20,25 @@ pub const State = struct {
     window_line: u8,
 
     pub fn init(allocator: mem.Allocator) !@This() {
-        return @This(){
-            .dots = 0,
-            .pixels = try allocator.create([SCREEN_WIDTH * SCREEN_HEIGHT]Pixel),
-            .window_line = 0,
-        };
+        const pixels = try allocator.create([SCREEN_WIDTH * SCREEN_HEIGHT]Pixel);
+
+        return @This().initWithMem(pixels);
+    }
+
+    pub fn reset(self: @This()) @This() {
+        return @This().initWithMem(self.pixels);
     }
 
     pub fn deinit(self: @This(), allocator: mem.Allocator) void {
         allocator.destroy(self.pixels);
+    }
+
+    fn initWithMem(pixels: *[SCREEN_WIDTH * SCREEN_HEIGHT]Pixel) @This() {
+        return @This(){
+            .dots = 0,
+            .pixels = pixels,
+            .window_line = 0,
+        };
     }
 };
 

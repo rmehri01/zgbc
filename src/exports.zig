@@ -1,5 +1,3 @@
-extern "env" fn rumbleChanged(on: bool) void;
-
 const std = @import("std");
 const allocator = std.heap.wasm_allocator;
 
@@ -9,6 +7,9 @@ const gameboy = zgbc.gameboy;
 const ppu = zgbc.ppu;
 const joypad = zgbc.joypad;
 const memory = zgbc.memory;
+const rom = zgbc.rom;
+
+extern "env" fn rumbleChanged(on: bool) void;
 
 pub const ByteArray = extern struct {
     ptr: [*]const u8,
@@ -35,16 +36,20 @@ export fn deinit(gb: *gameboy.State) void {
     gb.deinit(allocator);
 }
 
+export fn reset(gb: *gameboy.State) void {
+    gb.reset(allocator);
+}
+
 export fn loadROM(gb: *gameboy.State, ptr: [*]u8, len: u32) void {
-    memory.loadROM(allocator, gb, ptr, len, rumbleChanged) catch return;
+    rom.load(allocator, gb, ptr, len, rumbleChanged) catch return;
 }
 
 var title: ?ByteArray = null;
 export fn romTitle(gb: *gameboy.State) ?*ByteArray {
-    if (gb.memory.rom) |rom| {
+    if (gb.memory.rom) |r| {
         title = .{
-            .ptr = rom.title.ptr,
-            .len = rom.title.len,
+            .ptr = r.title.ptr,
+            .len = r.title.len,
         };
     }
 
@@ -52,8 +57,8 @@ export fn romTitle(gb: *gameboy.State) ?*ByteArray {
 }
 
 export fn supportsSaving(gb: *gameboy.State) bool {
-    if (gb.memory.rom) |rom| {
-        return rom.mbc.has_battery();
+    if (gb.memory.rom) |r| {
+        return r.mbc.has_battery();
     }
 
     return false;
@@ -61,9 +66,9 @@ export fn supportsSaving(gb: *gameboy.State) bool {
 
 var sram: ?ByteArray = null;
 export fn getBatteryBackedRAM(gb: *gameboy.State) ?*ByteArray {
-    if (gb.memory.rom) |rom| {
-        if (rom.mbc.has_battery()) {
-            switch (rom.mbc) {
+    if (gb.memory.rom) |r| {
+        if (r.mbc.has_battery()) {
+            switch (r.mbc) {
                 .mbc2_battery => |mbc2| {
                     sram = .{
                         .ptr = mbc2.builtin_ram,
@@ -72,8 +77,8 @@ export fn getBatteryBackedRAM(gb: *gameboy.State) ?*ByteArray {
                 },
                 else => {
                     sram = .{
-                        .ptr = rom.mbc_ram.ptr,
-                        .len = rom.mbc_ram.len,
+                        .ptr = r.mbc_ram.ptr,
+                        .len = r.mbc_ram.len,
                     };
                 },
             }
@@ -84,11 +89,11 @@ export fn getBatteryBackedRAM(gb: *gameboy.State) ?*ByteArray {
 }
 
 export fn setBatteryBackedRAM(gb: *gameboy.State, ptr: [*]u8, len: u32) void {
-    if (gb.memory.rom) |*rom| {
-        if (rom.mbc.has_battery()) {
-            switch (rom.mbc) {
+    if (gb.memory.rom) |*r| {
+        if (r.mbc.has_battery()) {
+            switch (r.mbc) {
                 .mbc2_battery => |*mbc2| @memcpy(mbc2.builtin_ram, ptr[0..len]),
-                else => @memcpy(rom.mbc_ram, ptr[0..len]),
+                else => @memcpy(r.mbc_ram, ptr[0..len]),
             }
         }
     }

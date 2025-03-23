@@ -19,17 +19,6 @@ pub const State = struct {
     ppu: ppu.State,
     apu: apu.State,
 
-    pub fn tick(self: *@This()) void {
-        if (self.timer.pending_cycles != 0) {
-            ppu.step(self);
-            apu.step(self);
-            timer.step(self);
-            self.timer.pending_cycles = 0;
-        }
-        self.timer.pending_cycles += timer.T_CYCLES_PER_M_CYCLE;
-        self.cpu.cycles_since_run += timer.T_CYCLES_PER_M_CYCLE;
-    }
-
     pub fn init(allocator: mem.Allocator) !@This() {
         return @This(){
             .cpu = cpu.State.init(),
@@ -44,5 +33,27 @@ pub const State = struct {
     pub fn deinit(self: @This(), allocator: mem.Allocator) void {
         self.memory.deinit(allocator);
         self.ppu.deinit(allocator);
+    }
+
+    pub fn reset(self: *@This(), allocator: mem.Allocator) void {
+        self.* = @This(){
+            .cpu = cpu.State.init(),
+            .joypad = joypad.State.init(),
+            .timer = timer.State.init(),
+            .memory = self.memory.reset(allocator),
+            .ppu = self.ppu.reset(),
+            .apu = self.apu.reset(),
+        };
+    }
+
+    pub fn tick(self: *@This()) void {
+        if (self.timer.pending_cycles != 0) {
+            ppu.step(self);
+            apu.step(self);
+            timer.step(self);
+            self.timer.pending_cycles = 0;
+        }
+        self.timer.pending_cycles += timer.T_CYCLES_PER_M_CYCLE;
+        self.cpu.cycles_since_run += timer.T_CYCLES_PER_M_CYCLE;
     }
 };
