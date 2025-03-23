@@ -113,6 +113,8 @@ pub fn step(gb: *gameboy.State) u8 {
             gb.memory.io.intf.v_blank = false;
             gb.cpu.ime = false;
             rst(gb, 0x40);
+            gb.tick();
+            gb.tick();
         }
     } else if (gb.memory.io.ie.lcd and gb.memory.io.intf.lcd) {
         gb.cpu.halted = false;
@@ -120,6 +122,8 @@ pub fn step(gb: *gameboy.State) u8 {
             gb.memory.io.intf.lcd = false;
             gb.cpu.ime = false;
             rst(gb, 0x48);
+            gb.tick();
+            gb.tick();
         }
     } else if (gb.memory.io.ie.timer and gb.memory.io.intf.timer) {
         gb.cpu.halted = false;
@@ -127,6 +131,8 @@ pub fn step(gb: *gameboy.State) u8 {
             gb.memory.io.intf.timer = false;
             gb.cpu.ime = false;
             rst(gb, 0x50);
+            gb.tick();
+            gb.tick();
         }
     } else if (gb.memory.io.ie.serial and gb.memory.io.intf.serial) {
         gb.cpu.halted = false;
@@ -134,6 +140,8 @@ pub fn step(gb: *gameboy.State) u8 {
             gb.memory.io.intf.serial = false;
             gb.cpu.ime = false;
             rst(gb, 0x58);
+            gb.tick();
+            gb.tick();
         }
     } else if (gb.memory.io.ie.joypad and gb.memory.io.intf.joypad) {
         gb.cpu.halted = false;
@@ -141,6 +149,8 @@ pub fn step(gb: *gameboy.State) u8 {
             gb.memory.io.intf.joypad = false;
             gb.cpu.ime = false;
             rst(gb, 0x60);
+            gb.tick();
+            gb.tick();
         }
     }
 

@@ -89,7 +89,7 @@ pub const State = struct {
         /// Linear feedback shift register.
         lfsr: u15,
         /// Steps noise pattern.
-        frequency_timer: u14,
+        frequency_timer: u22,
         /// Shuts off the channel after a certain amount of time.
         length: struct {
             /// The time before the channel shuts off.
@@ -408,7 +408,7 @@ fn stepWaveChannel(gb: *gameboy.State) void {
 fn stepNoiseChannel(gb: *gameboy.State) void {
     if (gb.apu.ch4.frequency_timer == 0) {
         const divider = if (gb.memory.io.nr43.clock_divider > 0)
-            @as(u14, gb.memory.io.nr43.clock_divider) << 4
+            @as(u22, gb.memory.io.nr43.clock_divider) << 4
         else
             8;
         gb.apu.ch4.frequency_timer = divider << gb.memory.io.nr43.clock_shift;

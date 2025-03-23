@@ -783,23 +783,23 @@ fn read_io_registers(gb: *gameboy.State, addr: Addr) u8 {
         0xff07 => @bitCast(gb.memory.io.tac),
         0xff0f => @bitCast(gb.memory.io.intf),
         0xff10 => @bitCast(gb.memory.io.nr10),
-        0xff11 => @bitCast(gb.memory.io.nr11),
+        0xff11 => @as(u8, @bitCast(gb.memory.io.nr11)) | 0x3f,
         0xff12 => @bitCast(gb.memory.io.nr12),
-        0xff13 => gb.memory.io.nr13,
-        0xff14 => @bitCast(gb.memory.io.nr14),
-        0xff16 => @bitCast(gb.memory.io.nr21),
+        0xff13 => 0xff,
+        0xff14 => @as(u8, @bitCast(gb.memory.io.nr14)) | 0xbf,
+        0xff16 => @as(u8, @bitCast(gb.memory.io.nr21)) | 0x3f,
         0xff17 => @bitCast(gb.memory.io.nr22),
-        0xff18 => gb.memory.io.nr23,
-        0xff19 => @bitCast(gb.memory.io.nr24),
-        0xff1a => @as(u8, @intFromBool(gb.apu.ch3.dac_enabled)) << 7 | @as(u8, 0x7f),
-        0xff1b => @bitCast(gb.memory.io.nr31),
-        0xff1c => 0x6f | @as(u8, @intFromEnum(gb.memory.io.nr32)) << 5,
-        0xff1d => gb.memory.io.nr33,
-        0xff1e => @bitCast(gb.memory.io.nr34),
-        0xff20 => @as(u8, 0xc0) | gb.memory.io.nr41,
+        0xff18 => 0xff,
+        0xff19 => @as(u8, @bitCast(gb.memory.io.nr24)) | 0xbf,
+        0xff1a => @as(u8, @intFromBool(gb.apu.ch3.dac_enabled)) << 7 | 0x7f,
+        0xff1b => 0xff,
+        0xff1c => 0x9f | @as(u8, @intFromEnum(gb.memory.io.nr32)) << 5,
+        0xff1d => 0xff,
+        0xff1e => @as(u8, @bitCast(gb.memory.io.nr34)) | 0xbf,
+        0xff20 => 0xff,
         0xff21 => @bitCast(gb.memory.io.nr42),
         0xff22 => @bitCast(gb.memory.io.nr43),
-        0xff23 => @bitCast(gb.memory.io.nr44),
+        0xff23 => @as(u8, @bitCast(gb.memory.io.nr44)) | 0xbf,
         0xff24 => @bitCast(gb.memory.io.nr50),
         0xff25 => @bitCast(gb.memory.io.nr51),
         0xff26 => @bitCast(gb.memory.io.nr52),
@@ -1057,7 +1057,7 @@ fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
                 0xff14 => {
                     gb.memory.io.nr14 = @bitCast(0b00111000 | value);
 
-                    if (gb.memory.io.nr14.trigger) {
+                    if (gb.memory.io.nr14.trigger and gb.apu.ch1.dac_enabled) {
                         gb.memory.io.nr14.trigger = false;
 
                         if (!gb.memory.io.nr52.ch1_on) {
@@ -1065,6 +1065,10 @@ fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
                         }
 
                         gb.apu.ch1.frequency = apu.frequency(gb, .ch1);
+
+                        if (gb.apu.ch1.length.timer == 0) {
+                            gb.apu.ch1.length.timer = 64;
+                        }
 
                         gb.apu.ch1.envelope.timer = if (gb.memory.io.nr12.pace > 0)
                             gb.memory.io.nr12.pace
@@ -1104,7 +1108,7 @@ fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
                 0xff19 => {
                     gb.memory.io.nr24 = @bitCast(0b00111000 | value);
 
-                    if (gb.memory.io.nr24.trigger) {
+                    if (gb.memory.io.nr24.trigger and gb.apu.ch2.dac_enabled) {
                         gb.memory.io.nr24.trigger = false;
 
                         if (!gb.memory.io.nr52.ch2_on) {
@@ -1112,6 +1116,10 @@ fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
                         }
 
                         gb.apu.ch2.frequency = apu.frequency(gb, .ch2);
+
+                        if (gb.apu.ch2.length.timer == 0) {
+                            gb.apu.ch2.length.timer = 64;
+                        }
 
                         gb.apu.ch2.envelope.timer = if (gb.memory.io.nr22.pace > 0)
                             gb.memory.io.nr22.pace
@@ -1122,7 +1130,12 @@ fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
                         gb.memory.io.nr52.ch2_on = true;
                     }
                 },
-                0xff1a => gb.apu.ch3.dac_enabled = value & 0x80 != 0,
+                0xff1a => {
+                    gb.apu.ch3.dac_enabled = value & 0x80 != 0;
+                    if (!gb.apu.ch3.dac_enabled) {
+                        gb.memory.io.nr52.ch3_on = false;
+                    }
+                },
                 0xff1b => {
                     gb.memory.io.nr31 = value;
                     gb.apu.ch3.length.timer = @as(u9, 256) - gb.memory.io.nr31;
@@ -1132,12 +1145,17 @@ fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
                 0xff1e => {
                     gb.memory.io.nr34 = @bitCast(0b00111000 | value);
 
-                    if (gb.memory.io.nr34.trigger) {
+                    if (gb.memory.io.nr34.trigger and gb.apu.ch3.dac_enabled) {
                         gb.memory.io.nr34.trigger = false;
 
                         if (!gb.memory.io.nr52.ch3_on) {
                             gb.apu.ch3.position = 0;
                         }
+
+                        if (gb.apu.ch3.length.timer == 0) {
+                            gb.apu.ch3.length.timer = 256;
+                        }
+
                         gb.apu.ch3.frequency = apu.frequency(gb, .ch3);
                         gb.memory.io.nr52.ch3_on = true;
                     }
@@ -1158,10 +1176,15 @@ fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
                 0xff23 => {
                     gb.memory.io.nr44 = @bitCast(0x3f | value);
 
-                    if (gb.memory.io.nr44.trigger) {
+                    if (gb.memory.io.nr44.trigger and gb.apu.ch4.dac_enabled) {
                         gb.memory.io.nr44.trigger = false;
 
                         gb.apu.ch4.lfsr = math.maxInt(u15);
+
+                        if (gb.apu.ch4.length.timer == 0) {
+                            gb.apu.ch4.length.timer = 64;
+                        }
+
                         gb.apu.ch4.envelope.timer = if (gb.memory.io.nr42.pace > 0)
                             gb.memory.io.nr42.pace
                         else

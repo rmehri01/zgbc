@@ -119,9 +119,9 @@ pub fn step(gb: *gameboy.State) void {
                 gb.ppu.dots = 0;
                 gb.memory.io.ly += 1;
 
-                if (gb.memory.io.ly == gb.memory.io.lyc) {
+                gb.memory.io.stat.lyc_eq = gb.memory.io.ly == gb.memory.io.lyc;
+                if (gb.memory.io.stat.lyc_int_select and gb.memory.io.stat.lyc_eq) {
                     gb.memory.io.intf.lcd = true;
-                    gb.memory.io.stat.lyc_eq = true;
                 }
 
                 if (gb.memory.io.ly == SCREEN_HEIGHT) {
@@ -145,9 +145,9 @@ pub fn step(gb: *gameboy.State) void {
                 gb.ppu.dots = 0;
                 gb.memory.io.ly += 1;
 
-                if (gb.memory.io.ly == gb.memory.io.lyc) {
+                gb.memory.io.stat.lyc_eq = gb.memory.io.ly == gb.memory.io.lyc;
+                if (gb.memory.io.stat.lyc_int_select and gb.memory.io.stat.lyc_eq) {
                     gb.memory.io.intf.lcd = true;
-                    gb.memory.io.stat.lyc_eq = true;
                 }
 
                 if (gb.memory.io.ly > 153) {
@@ -155,11 +155,9 @@ pub fn step(gb: *gameboy.State) void {
                     gb.memory.io.ly = 0;
                     gb.ppu.window_line = 0;
 
-                    if (gb.memory.io.stat.lyc_int_select and
-                        gb.memory.io.ly == gb.memory.io.lyc)
-                    {
+                    gb.memory.io.stat.lyc_eq = gb.memory.io.ly == gb.memory.io.lyc;
+                    if (gb.memory.io.stat.lyc_int_select and gb.memory.io.stat.lyc_eq) {
                         gb.memory.io.intf.lcd = true;
-                        gb.memory.io.stat.lyc_eq = true;
                     }
                     if (gb.memory.io.stat.oam_scan_int_select) {
                         gb.memory.io.intf.lcd = true;
@@ -171,13 +169,13 @@ pub fn step(gb: *gameboy.State) void {
 }
 
 fn renderLine(gb: *gameboy.State) void {
-    const data_area_start: memory.Addr = switch (gb.memory.io.lcdc.bg_window_tile_data_area) {
-        .signed => memory.TILE_BLOCK2_START,
-        .unsigned => memory.TILE_BLOCK0_START,
-    };
-
     var rendered_window = false;
     if (gb.memory.io.lcdc.bg_window_enable_priority) {
+        const data_area_start: memory.Addr = switch (gb.memory.io.lcdc.bg_window_tile_data_area) {
+            .signed => memory.TILE_BLOCK2_START,
+            .unsigned => memory.TILE_BLOCK0_START,
+        };
+
         for (0..SCREEN_WIDTH) |x_pixel_off| {
             const tile_map_start_selector, const tile_map_y, const tile_map_x =
                 if (gb.memory.io.lcdc.window_enable and
@@ -262,7 +260,10 @@ fn renderLine(gb: *gameboy.State) void {
                     1 => gb.memory.io.obp1,
                 };
 
-                const tile_id = object.tile_id;
+                const tile_id = switch (gb.memory.io.lcdc.obj_size) {
+                    .bit8 => object.tile_id,
+                    .bit16 => object.tile_id & 0xfe,
+                };
 
                 for (0..8) |x_pixel_off| {
                     const x_pixel: u8 = object.x_pos +% @as(u8, @intCast(x_pixel_off)) -% 8;
