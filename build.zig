@@ -27,7 +27,7 @@ pub fn build(b: *std.Build) void {
     const test_lib_mod = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
         .target = host_target,
-        .optimize = .Debug,
+        .optimize = optimize,
     });
     const lib_unit_tests = b.addTest(.{
         .root_module = test_lib_mod,

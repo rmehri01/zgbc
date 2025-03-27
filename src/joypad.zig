@@ -71,6 +71,7 @@ pub const ButtonState = packed union {
 /// `u8` instead of `u3` since it needs to be extern compatible.
 pub const Button = enum(u8) { right, left, up, down, a, b, select, start };
 
+/// Updates the internal state of the button to pressed and generates a joypad interrupt.
 pub fn press(gb: *gameboy.State, button: Button) void {
     switch (button) {
         inline else => |b| @field(gb.joypad.button_state.named, @tagName(b)) = 0,
@@ -78,6 +79,7 @@ pub fn press(gb: *gameboy.State, button: Button) void {
     gb.memory.io.intf.joypad = true;
 }
 
+/// Updates the internal state of the button to released.
 pub fn release(gb: *gameboy.State, button: Button) void {
     switch (button) {
         inline else => |b| @field(gb.joypad.button_state.named, @tagName(b)) = 1,

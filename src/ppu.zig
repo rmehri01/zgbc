@@ -58,7 +58,7 @@ pub const Pixel = packed struct {
     a: u8,
 };
 
-const colors = [4]Pixel{
+pub const colors = [4]Pixel{
     // White: #e0f8d0
     .{ .r = 224, .g = 248, .b = 208, .a = 255 },
     // Light Gray: #88c070
@@ -178,7 +178,10 @@ pub fn step(gb: *gameboy.State) void {
     }
 }
 
+/// Renders a single line to the pixel output buffer by reading vram and oam.
 fn renderLine(gb: *gameboy.State) void {
+    if (!gb.memory.io.lcdc.lcd_enable) return;
+
     var rendered_window = false;
     if (gb.memory.io.lcdc.bg_window_enable_priority) {
         const data_area_start: memory.Addr = switch (gb.memory.io.lcdc.bg_window_tile_data_area) {
@@ -187,6 +190,7 @@ fn renderLine(gb: *gameboy.State) void {
         };
 
         for (0..SCREEN_WIDTH) |x_pixel_off| {
+            // get the current tile based on if we're drawing the background or window
             const tile_map_start_selector, const tile_map_y, const tile_map_x =
                 if (gb.memory.io.lcdc.window_enable and
                 gb.memory.io.wy <= gb.memory.io.ly and
@@ -207,11 +211,9 @@ fn renderLine(gb: *gameboy.State) void {
                 1 => memory.TILE_MAP1_START,
             };
 
-            const tile_id = gb.memory.vram[
-                tile_map_start +
-                    (@as(u16, tile_map_y) / 8) * 32 +
-                    (tile_map_x / 8) - memory.VRAM_START
-            ];
+            const tile_id = memory.read_vram(gb, tile_map_start +
+                (@as(u16, tile_map_y) / 8) * 32 +
+                (tile_map_x / 8));
             var tile_addr = switch (gb.memory.io.lcdc.bg_window_tile_data_area) {
                 .signed => value: {
                     const offset = @as(i8, @bitCast(tile_id)) * @as(i16, 16);
@@ -225,12 +227,14 @@ fn renderLine(gb: *gameboy.State) void {
 
             tile_addr += (tile_map_y % 8) * 2;
 
-            const tile_data1 = gb.memory.vram[tile_addr - memory.VRAM_START];
-            const tile_data2 = gb.memory.vram[tile_addr + 1 - memory.VRAM_START];
+            // each tile is 16 bytes, and the pixel is spread across both bytes
+            const tile_data1 = memory.read_vram(gb, tile_addr);
+            const tile_data2 = memory.read_vram(gb, tile_addr + 1);
 
             const lo = tile_data1 & (@as(u8, 0x80) >> @intCast(tile_map_x % 8)) != 0;
             const hi = tile_data2 & (@as(u8, 0x80) >> @intCast(tile_map_x % 8)) != 0;
 
+            // use the palette to find the final color
             const palette_id = @as(u2, @intFromBool(hi)) << 1 | @intFromBool(lo);
             const color_id = switch (palette_id) {
                 0 => gb.memory.io.bgp.id0,
@@ -243,6 +247,7 @@ fn renderLine(gb: *gameboy.State) void {
         }
     }
     if (rendered_window) {
+        // only increment the window line if we actually rendered it
         gb.ppu.window_line += 1;
     }
 
@@ -251,13 +256,12 @@ fn renderLine(gb: *gameboy.State) void {
         const obj_size = @sizeOf(Object);
 
         while (obj_addr < memory.OAM_START + 0xa0) : (obj_addr += obj_size) {
-            // TODO: clean up
+            // get the current oam object
             const rel_addr = obj_addr - memory.OAM_START;
             const object: Object = @bitCast(
                 gb.memory.oam[rel_addr .. rel_addr + obj_size][0..obj_size].*,
             );
 
-            // TODO: naive
             const obj_height: u5 = switch (gb.memory.io.lcdc.obj_size) {
                 .bit8 => 8,
                 .bit16 => 16,
@@ -279,10 +283,10 @@ fn renderLine(gb: *gameboy.State) void {
                     const x_pixel: u8 = object.x_pos +% @as(u8, @intCast(x_pixel_off)) -% 8;
 
                     if (0 <= x_pixel and x_pixel < SCREEN_WIDTH and
-                        // TODO: messy
                         (object.flags.priority == .above or
                             gb.ppu.pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel] == colors[gb.memory.io.bgp.id0]))
                     {
+                        // always used unsigned addressing for objects
                         var tile_addr = memory.TILE_BLOCK0_START + @as(u16, tile_id) * 16;
 
                         const y_pixel_off = gb.memory.io.ly + 16 - object.y_pos;
@@ -291,8 +295,8 @@ fn renderLine(gb: *gameboy.State) void {
                         else
                             y_pixel_off) * 2;
 
-                        const tile_data1 = gb.memory.vram[tile_addr - memory.VRAM_START];
-                        const tile_data2 = gb.memory.vram[tile_addr + 1 - memory.VRAM_START];
+                        const tile_data1 = memory.read_vram(gb, tile_addr);
+                        const tile_data2 = memory.read_vram(gb, tile_addr + 1);
 
                         const x_bit_num: u3 = if (object.flags.x_flip)
                             @intCast(7 - x_pixel_off)

@@ -11,13 +11,17 @@ export default function LoadROMButton({ zgbc }: { zgbc: Zgbc | null }) {
 
   return (
     <>
-      <button onClick={() => romRef.current?.click()} tabIndex={-1}>
+      <button
+        onClick={(e) => {
+          romRef.current?.click();
+          e.currentTarget.blur();
+        }}
+      >
         Load ROM
       </button>
       <input
         onChange={(e) => {
           void handleLoadROM(e.target.files![0]);
-          e.target.blur();
         }}
         multiple={false}
         ref={romRef}

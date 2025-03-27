@@ -93,14 +93,12 @@ export function useSetupInputs(
     window.onkeydown = (e) => {
       const button = KEY_BUTTON_MAP[e.code];
       if (button !== undefined) {
-        e.preventDefault();
         pressButton(InputSource.Keyboard, button);
       }
     };
     window.onkeyup = (e) => {
       const button = KEY_BUTTON_MAP[e.code];
       if (button !== undefined) {
-        e.preventDefault();
         releaseButton(InputSource.Keyboard, button);
       }
     };

@@ -460,7 +460,6 @@ pub fn readByte(gb: *gameboy.State, addr: Addr) u8 {
         0xa000...0xbfff => read_mbc_ram(gb, addr),
         0xc000...0xcfff => read_ram(gb, addr),
         0xd000...0xdfff => read_banked_ram(gb, addr),
-        // TODO: clean up
         0xe000...0xfdff => read_ram(gb, addr - 0x2000),
         0xfe00...0xfe9f => read_oam(gb, addr),
         0xfea0...0xfeff => read_not_usable(gb, addr),
@@ -508,7 +507,7 @@ fn read_mbc_rom(gb: *gameboy.State, addr: Addr) u8 {
     return 0xff;
 }
 
-fn read_vram(gb: *gameboy.State, addr: Addr) u8 {
+pub fn read_vram(gb: *gameboy.State, addr: Addr) u8 {
     return gb.memory.vram[addr - VRAM_START];
 }
 
@@ -651,7 +650,6 @@ pub fn writeByte(gb: *gameboy.State, addr: Addr, value: u8) void {
         0xa000...0xbfff => write_mbc_ram(gb, addr, value),
         0xc000...0xcfff => write_ram(gb, addr, value),
         0xd000...0xdfff => write_banked_ram(gb, addr, value),
-        // TODO: clean up
         0xe000...0xfdff => write_ram(gb, addr - 0x2000, value),
         0xfe00...0xfe9f => write_oam(gb, addr, value),
         0xfea0...0xfeff => write_not_usable(gb, addr, value),
@@ -828,7 +826,6 @@ fn write_not_usable(gb: *gameboy.State, addr: Addr, value: u8) void {
     _ = gb;
     _ = addr;
     _ = value;
-    // @panic("unimplemented");
 }
 
 fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
@@ -1073,7 +1070,12 @@ fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
             const idx: u4 = @truncate(a);
             gb.memory.io.wave_pattern_ram[idx] = @bitCast(value);
         },
-        0xff40 => gb.memory.io.lcdc = @bitCast(value),
+        0xff40 => {
+            gb.memory.io.lcdc = @bitCast(value);
+            if (!gb.memory.io.lcdc.lcd_enable) {
+                @memset(gb.ppu.pixels, ppu.colors[0]);
+            }
+        },
         0xff41 => gb.memory.io.stat = @bitCast(
             (@as(u8, @bitCast(gb.memory.io.stat)) & 0x87) | (value & 0x78),
         ),

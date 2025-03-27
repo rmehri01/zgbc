@@ -46,6 +46,7 @@ pub const State = struct {
         };
     }
 
+    /// Steps all components of the emulator once.
     pub fn tick(self: *@This()) void {
         if (self.timer.pending_cycles != 0) {
             ppu.step(self);

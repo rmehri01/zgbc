@@ -19,9 +19,6 @@ pub const State = struct {
     ime: bool,
     /// Whether the cpu is halted and waiting for an interrupt.
     halted: bool,
-    /// The ei instruction has a delayed effect that will enable interrupt
-    /// handling after one machine cycle.
-    scheduled_ei: bool,
     /// The halt bug will cause the byte after halt to be read a second time.
     halt_bug: bool,
     /// State of the registers in the gameboy.
@@ -33,7 +30,6 @@ pub const State = struct {
         return @This(){
             .ime = false,
             .halted = false,
-            .scheduled_ei = false,
             .halt_bug = false,
             .registers = .{ .named16 = .{ .af = 0, .bc = 0, .de = 0, .hl = 0, .sp = 0, .pc = 0 } },
             .cycles_since_run = 0,
@@ -105,73 +101,80 @@ pub const Flags = packed struct(u8) {
 
 /// Execute a single step of the cpu.
 pub fn step(gb: *gameboy.State) u8 {
-    fetch_execute(gb);
-
-    if (gb.memory.io.ie.v_blank and gb.memory.io.intf.v_blank) {
-        gb.cpu.halted = false;
-        if (gb.cpu.ime) {
-            gb.memory.io.intf.v_blank = false;
-            gb.cpu.ime = false;
-            rst(gb, 0x40);
-            gb.tick();
-            gb.tick();
-        }
-    } else if (gb.memory.io.ie.lcd and gb.memory.io.intf.lcd) {
-        gb.cpu.halted = false;
-        if (gb.cpu.ime) {
-            gb.memory.io.intf.lcd = false;
-            gb.cpu.ime = false;
-            rst(gb, 0x48);
-            gb.tick();
-            gb.tick();
-        }
-    } else if (gb.memory.io.ie.timer and gb.memory.io.intf.timer) {
-        gb.cpu.halted = false;
-        if (gb.cpu.ime) {
-            gb.memory.io.intf.timer = false;
-            gb.cpu.ime = false;
-            rst(gb, 0x50);
-            gb.tick();
-            gb.tick();
-        }
-    } else if (gb.memory.io.ie.serial and gb.memory.io.intf.serial) {
-        gb.cpu.halted = false;
-        if (gb.cpu.ime) {
-            gb.memory.io.intf.serial = false;
-            gb.cpu.ime = false;
-            rst(gb, 0x58);
-            gb.tick();
-            gb.tick();
-        }
-    } else if (gb.memory.io.ie.joypad and gb.memory.io.intf.joypad) {
-        gb.cpu.halted = false;
-        if (gb.cpu.ime) {
-            gb.memory.io.intf.joypad = false;
-            gb.cpu.ime = false;
-            rst(gb, 0x60);
-            gb.tick();
-            gb.tick();
-        }
+    const handled = handleInterrupt(gb);
+    if (!handled) {
+        fetchExecute(gb);
     }
 
     defer gb.cpu.cycles_since_run = 0;
     return gb.cpu.cycles_since_run;
 }
 
+/// Try to handle a single interrupt in priority order.
+fn handleInterrupt(gb: *gameboy.State) bool {
+    var handled = false;
+
+    if (gb.memory.io.ie.v_blank and gb.memory.io.intf.v_blank) {
+        gb.cpu.halted = false;
+        if (gb.cpu.ime) {
+            gb.memory.io.intf.v_blank = false;
+            gb.cpu.ime = false;
+            gb.tick();
+            gb.tick();
+            rst(gb, 0x40);
+            handled = true;
+        }
+    } else if (gb.memory.io.ie.lcd and gb.memory.io.intf.lcd) {
+        gb.cpu.halted = false;
+        if (gb.cpu.ime) {
+            gb.memory.io.intf.lcd = false;
+            gb.cpu.ime = false;
+            gb.tick();
+            gb.tick();
+            rst(gb, 0x48);
+            handled = true;
+        }
+    } else if (gb.memory.io.ie.timer and gb.memory.io.intf.timer) {
+        gb.cpu.halted = false;
+        if (gb.cpu.ime) {
+            gb.memory.io.intf.timer = false;
+            gb.cpu.ime = false;
+            gb.tick();
+            gb.tick();
+            rst(gb, 0x50);
+            handled = true;
+        }
+    } else if (gb.memory.io.ie.serial and gb.memory.io.intf.serial) {
+        gb.cpu.halted = false;
+        if (gb.cpu.ime) {
+            gb.memory.io.intf.serial = false;
+            gb.cpu.ime = false;
+            gb.tick();
+            gb.tick();
+            rst(gb, 0x58);
+            handled = true;
+        }
+    } else if (gb.memory.io.ie.joypad and gb.memory.io.intf.joypad) {
+        gb.cpu.halted = false;
+        if (gb.cpu.ime) {
+            gb.memory.io.intf.joypad = false;
+            gb.cpu.ime = false;
+            gb.tick();
+            gb.tick();
+            rst(gb, 0x60);
+            handled = true;
+        }
+    }
+
+    return handled;
+}
+
 /// Fetch, decode, and execute a single CPU instruction.
-fn fetch_execute(gb: *gameboy.State) void {
+fn fetchExecute(gb: *gameboy.State) void {
     if (gb.cpu.halted) {
         gb.tick();
         return;
     }
-
-    // If the scheduled `ei` instruction wasn't cancelled, then enable
-    // interrupt handling after the next instruction runs.
-    const scheduled_ei = gb.cpu.scheduled_ei;
-    defer if (scheduled_ei and gb.cpu.scheduled_ei) {
-        @branchHint(.unlikely);
-        gb.cpu.ime = true;
-    };
 
     const op_code = fetch8(gb);
     if (gb.cpu.halt_bug) {
@@ -695,6 +698,7 @@ fn ld_dhl_r(gb: *gameboy.State, r: *const u8) void {
     cycleWrite(gb, gb.cpu.registers.named16.hl, r.*);
 }
 
+/// Pauses the cpu until an interrupt is pending.
 fn halt(gb: *gameboy.State) void {
     gb.cpu.halted = true;
 
@@ -1015,11 +1019,8 @@ fn ld_a_dc(gb: *gameboy.State) void {
 }
 
 /// Reset the interrupt master enable flag and prohibit maskable interrupts.
-///
-/// Cancels any scheduled effects of the EI instruction.
 fn di(gb: *gameboy.State) void {
     gb.cpu.ime = false;
-    gb.cpu.scheduled_ei = false;
 }
 
 /// Take the bitwise OR of the contents of the 8-bit immediate operand `d8` and
@@ -1038,10 +1039,8 @@ fn ld_a_da16(gb: *gameboy.State) void {
 
 /// Set the interrupt master enable flag and enable maskable interrupts. This
 /// instruction can be used in an interrupt routine to enable higher-order interrupts.
-///
-/// The flag is only set *after* the instruction following EI.
 fn ei(gb: *gameboy.State) void {
-    gb.cpu.scheduled_ei = true;
+    gb.cpu.ime = true;
 }
 
 /// Compare the contents of register `A` and the contents of the 8-bit immediate

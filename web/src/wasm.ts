@@ -6,6 +6,7 @@ export const CLOCK_RATE = 4194304;
 
 export const SCREEN_WIDTH = 160;
 export const SCREEN_HEIGHT = 144;
+export const CYCLES_PER_FRAME = 70224;
 
 const AUDIO_BUFFER_SIZE = 2048;
 const AUDIO_BUFFER_BYTES = AUDIO_BUFFER_SIZE * 4;

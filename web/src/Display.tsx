@@ -1,5 +1,11 @@
 import { useEffect, useRef } from "react";
-import { CLOCK_RATE, SCREEN_HEIGHT, SCREEN_WIDTH, Zgbc } from "./wasm";
+import {
+  CLOCK_RATE,
+  CYCLES_PER_FRAME,
+  SCREEN_HEIGHT,
+  SCREEN_WIDTH,
+  Zgbc,
+} from "./wasm";
 
 export default function Display({
   zgbc,
@@ -30,28 +36,34 @@ export default function Display({
 
     const renderFrame = (time: DOMHighResTimeStamp) => {
       if (!paused) {
-        // update gamepad controller if attached
-        checkGamepadInputs();
-
         // run cpu cycles based on elapsed time
         const elapsedMs = time - lastTime;
         lastTime = time;
 
-        const cycles = (CLOCK_RATE / 1000) * elapsedMs + cyclesRemaining;
-        const wholeCycles = Math.floor(cycles);
-        cyclesRemaining = cycles - wholeCycles;
-        cyclesRemaining += zgbc.stepCycles(wholeCycles);
+        cyclesRemaining += (CLOCK_RATE / 1000) * elapsedMs;
+        const numFrames = Math.floor(cyclesRemaining / CYCLES_PER_FRAME);
+        if (numFrames > 0) {
+          for (let i = 0; i < numFrames; i++) {
+            // update gamepad controller if attached
+            checkGamepadInputs();
 
-        // update rendered state
-        const imageData = new ImageData(
-          zgbc.pixels(),
-          context.canvas.width,
-          context.canvas.height,
-        );
-        context.putImageData(imageData, 0, 0);
+            // run one frame
+            cyclesRemaining += zgbc.stepCycles(CYCLES_PER_FRAME);
 
-        // update audio
-        updateAudio();
+            // update rendered state
+            const imageData = new ImageData(
+              zgbc.pixels(),
+              context.canvas.width,
+              context.canvas.height,
+            );
+            context.putImageData(imageData, 0, 0);
+
+            // update audio
+            updateAudio();
+          }
+        }
+
+        cyclesRemaining -= numFrames * CYCLES_PER_FRAME;
       }
 
       animationFrameId = window.requestAnimationFrame(renderFrame);
@@ -62,7 +74,6 @@ export default function Display({
     const pauseRendering = () => {
       if (document.visibilityState === "visible") {
         lastTime = performance.now();
-        cyclesRemaining = 0;
         paused = false;
       } else {
         paused = true;
