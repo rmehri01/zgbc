@@ -26,6 +26,7 @@ const GAMEPAD_BUTTON_MAP = new Map<number, Button>([
 enum InputSource {
   Keyboard,
   Gamepad,
+  Display,
 }
 
 enum ButtonState {
@@ -36,6 +37,7 @@ enum ButtonState {
 export function useSetupInputs(
   zgbc: Zgbc | null,
   gamepad: React.RefObject<Gamepad | null>,
+  isMobile: boolean,
 ): {
   checkGamepadInputs: () => void;
 } {
@@ -56,6 +58,7 @@ export function useSetupInputs(
     () => ({
       [InputSource.Keyboard]: structuredClone(buttonStateMap),
       [InputSource.Gamepad]: structuredClone(buttonStateMap),
+      [InputSource.Display]: structuredClone(buttonStateMap),
     }),
     [buttonStateMap],
   );
@@ -113,6 +116,63 @@ export function useSetupInputs(
       inputStateMap.current = structuredClone(initialInputStateMap);
     });
   }, [gamepad, initialInputStateMap]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+
+    let lastPressed: Button | undefined = undefined;
+    const classButtonMap: Record<string, Button> = {
+      right: Button.Right,
+      left: Button.Left,
+      up: Button.Up,
+      down: Button.Down,
+      a: Button.A,
+      b: Button.B,
+      select: Button.Select,
+      start: Button.Start,
+    };
+
+    const handleHover = (e: PointerEvent) => {
+      const elem = document.elementFromPoint(e.x, e.y);
+      if (!elem) return;
+
+      const button = classButtonMap[elem.className];
+      if (button === undefined) return;
+
+      if (lastPressed !== button) {
+        reset();
+        pressButton(InputSource.Display, button);
+        lastPressed = button;
+      }
+    };
+    const handleDown = (e: PointerEvent) => {
+      const elem = document.elementFromPoint(e.x, e.y);
+      if (!elem) return;
+
+      const button = classButtonMap[elem.className];
+      if (button === undefined) return;
+
+      pressButton(InputSource.Display, button);
+    };
+    const reset = () => {
+      for (const button of Object.values(Button).filter(
+        (b) => typeof b !== "string",
+      )) {
+        releaseButton(InputSource.Display, button);
+      }
+      lastPressed = undefined;
+    };
+
+    window.addEventListener("pointerdown", handleDown);
+    window.addEventListener("pointermove", handleHover);
+    window.addEventListener("pointerup", reset);
+
+    return () => {
+      window.removeEventListener("pointerdown", handleDown);
+      window.removeEventListener("pointermove", handleHover);
+      window.removeEventListener("pointerup", reset);
+    };
+  }, [isMobile, pressButton, releaseButton]);
 
   return {
     checkGamepadInputs: () => {

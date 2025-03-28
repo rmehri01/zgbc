@@ -17,6 +17,12 @@ export default function Display({
   updateAudio: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const romRef = useRef<HTMLInputElement>(null);
+
+  const handleLoadROM = async (file: File) => {
+    const bytes = await file.arrayBuffer();
+    zgbc?.loadROM(new Uint8Array(bytes));
+  };
 
   useEffect(() => {
     if (!zgbc) return;
@@ -88,5 +94,26 @@ export default function Display({
     };
   }, [zgbc, checkGamepadInputs, updateAudio]);
 
-  return <canvas ref={canvasRef} width={SCREEN_WIDTH} height={SCREEN_HEIGHT} />;
+  return (
+    <>
+      <canvas
+        ref={canvasRef}
+        onClick={(e) => {
+          romRef.current?.click();
+          e.currentTarget.blur();
+        }}
+        width={SCREEN_WIDTH}
+        height={SCREEN_HEIGHT}
+      />
+      <input
+        onChange={(e) => {
+          void handleLoadROM(e.target.files![0]);
+        }}
+        multiple={false}
+        ref={romRef}
+        type="file"
+        hidden
+      />
+    </>
+  );
 }

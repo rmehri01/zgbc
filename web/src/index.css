@@ -10,48 +10,20 @@
 
   --background: #c3bdb9;
   --black: #232326;
+  --light-gray: #8f8c8f;
+  --gray: #646264;
+  --dark-gray: #2d2d31;
   --white: #b8b5b7;
   --red: #a0275b;
+  --dark-red: #701b40;
   --blue: #323787;
   --green: #7c9e51;
-  --gray: #8f8c8f;
 }
 
 body {
   margin: 0;
   display: flex;
-}
-
-nav {
-  position: fixed;
-  right: 10px;
-}
-
-canvas {
-  width: 40vw;
-  height: 40vw;
-  image-rendering: pixelated;
-  border-radius: 8px;
-  border: 4px solid;
-  border-color: var(--gray);
-  align-self: center;
-}
-
-button {
-  border-radius: 8px;
-  border: 3px solid transparent;
-  padding: 0.2em 0.5em;
-  font-size: 1.5em;
-  font-family: inherit;
-  background-color: var(--black);
-  color: var(--white);
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: var(--green);
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
 }
