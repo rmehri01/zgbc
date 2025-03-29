@@ -34,6 +34,11 @@ enum ButtonState {
   Pressed,
 }
 
+enum ButtonCluster {
+  DPad,
+  AB,
+}
+
 export function useSetupInputs(
   zgbc: Zgbc | null,
   gamepad: React.RefObject<Gamepad | null>,
@@ -121,6 +126,14 @@ export function useSetupInputs(
     if (!isMobile) return;
 
     let lastPressed: Button | undefined = undefined;
+    const lastPressedMap: Record<ButtonCluster, Button | undefined> = {
+      [ButtonCluster.DPad]: undefined,
+      [ButtonCluster.AB]: undefined,
+    };
+    const buttonClusterMap = {
+      [ButtonCluster.DPad]: [Button.Right, Button.Left, Button.Up, Button.Down],
+      [ButtonCluster.AB]: [Button.A, Button.B],
+    };
     const classButtonMap: Record<string, Button> = {
       right: Button.Right,
       left: Button.Left,
@@ -139,11 +152,20 @@ export function useSetupInputs(
       const button = classButtonMap[elem.className];
       if (button === undefined) return;
 
-      if (lastPressed !== button) {
-        reset();
-        pressButton(InputSource.Display, button);
-        lastPressed = button;
+      for (const cluster of Object.values(ButtonCluster).filter(
+        (c) => typeof c !== "string",
+      ))
+        if (lastPressedMap[cluster] !== button) {
+          resetCluster(cluster);
+          pressButton(InputSource.Display, button);
+          lastPressedMap[cluster] = button;
+        }
+    };
+    const resetCluster = (cluster: ButtonCluster) => {
+      for (const button of buttonClusterMap[cluster]) {
+        releaseButton(InputSource.Display, button);
       }
+      lastPressedMap[cluster] = undefined;
     };
     const handleDown = (e: PointerEvent) => {
       const elem = document.elementFromPoint(e.x, e.y);
@@ -153,14 +175,13 @@ export function useSetupInputs(
       if (button === undefined) return;
 
       pressButton(InputSource.Display, button);
+      lastPressed = button;
     };
     const reset = () => {
-      for (const button of Object.values(Button).filter(
-        (b) => typeof b !== "string",
-      )) {
-        releaseButton(InputSource.Display, button);
+      if (lastPressed !== undefined) {
+        releaseButton(InputSource.Display, lastPressed);
+        lastPressed = undefined;
       }
-      lastPressed = undefined;
     };
 
     window.addEventListener("pointerdown", handleDown);
