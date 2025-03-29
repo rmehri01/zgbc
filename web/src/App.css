@@ -18,7 +18,7 @@
 
   @media only screen and (max-width: 728px) {
     @media (orientation: portrait) {
-      margin: 2.5vh 1vw;
+      margin: 3vh 1vw;
     }
   }
   @media only screen and (max-width: 1024px) {
@@ -43,9 +43,40 @@
   }
 }
 
-nav {
-  position: fixed;
-  right: 10px;
+.middle-container {
+  display: flex;
+  direction: row;
+  justify-content: space-between;
+  padding: 2vw;
+
+  position: relative;
+  bottom: 50vw;
+
+  @media only screen and (max-width: 728px) {
+    @media (orientation: portrait) {
+      bottom: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+    }
+  }
+  @media only screen and (max-width: 1024px) {
+    @media (orientation: landscape) {
+      position: absolute;
+      bottom: 92.5vh;
+    }
+  }
+}
+
+.tm-text {
+  color: var(--blue);
+  font-size: 2em;
+
+  @media only screen and (max-width: 1024px) {
+    @media (orientation: landscape) {
+      position: absolute;
+      top: 10vh;
+    }
+  }
 }
 
 canvas {
@@ -76,19 +107,19 @@ canvas {
   display: flex;
   direction: row;
   justify-content: space-between;
-  padding: 15vh 15px;
+  padding: 5vw 12.5px;
 
   @media only screen and (max-width: 1024px) {
     @media (orientation: landscape) {
       position: relative;
-      top: -75vh;
-      left: 10vh;
+      top: -65vh;
+      left: 5vh;
       padding: 0;
     }
   }
   @media only screen and (max-height: 700px) {
     @media (orientation: portrait) {
-      padding: 3vh 15px;
+      padding: 1vh 15px;
     }
   }
 }
@@ -294,6 +325,13 @@ canvas {
   position: relative;
   right: 17.5vw;
   bottom: 2.5vw;
+
+  @media only screen and (max-width: 1024px) {
+    @media (orientation: landscape) {
+      right: 12.5vw;
+      bottom: 2.5vw;
+    }
+  }
 }
 
 .a,
@@ -345,18 +383,24 @@ canvas {
 }
 
 .select {
-  top: 50%;
+  top: 30%;
   left: 50%;
 
   @media only screen and (max-width: 1024px) {
     @media (orientation: landscape) {
-      top: 40%;
+      top: 20%;
+      left: 30%;
+    }
+  }
+  @media only screen and (max-height: 700px) {
+    @media (orientation: portrait) {
+      top: 20%;
     }
   }
 }
 
 .start {
-  top: 57.5%;
+  top: 37.5%;
   right: 90%;
 
   .slanted-text {
@@ -365,8 +409,13 @@ canvas {
 
   @media only screen and (max-width: 1024px) {
     @media (orientation: landscape) {
-      top: 47.5%;
-      right: 175%;
+      top: 27.5%;
+      right: 90%;
+    }
+  }
+  @media only screen and (max-height: 700px) {
+    @media (orientation: portrait) {
+      top: 27.5%;
     }
   }
 }
