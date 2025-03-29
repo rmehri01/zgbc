@@ -34,11 +34,6 @@ enum ButtonState {
   Pressed,
 }
 
-enum ButtonCluster {
-  DPad,
-  AB,
-}
-
 export function useSetupInputs(
   zgbc: Zgbc | null,
   gamepad: React.RefObject<Gamepad | null>,
@@ -125,15 +120,7 @@ export function useSetupInputs(
   useEffect(() => {
     if (!isMobile) return;
 
-    let lastPressed: Button | undefined = undefined;
-    const lastPressedMap: Record<ButtonCluster, Button | undefined> = {
-      [ButtonCluster.DPad]: undefined,
-      [ButtonCluster.AB]: undefined,
-    };
-    const buttonClusterMap = {
-      [ButtonCluster.DPad]: [Button.Right, Button.Left, Button.Up, Button.Down],
-      [ButtonCluster.AB]: [Button.A, Button.B],
-    };
+    const lastTouchedMap: Record<number, Button | undefined> = {};
     const classButtonMap: Record<string, Button> = {
       right: Button.Right,
       left: Button.Left,
@@ -143,31 +130,28 @@ export function useSetupInputs(
       b: Button.B,
       select: Button.Select,
       start: Button.Start,
+      "select-text slanted-text": Button.Select,
+      "start-text slanted-text": Button.Start,
     };
 
-    const handleHover = (e: PointerEvent) => {
+    const handleHold = (e: PointerEvent) => {
+      e.preventDefault();
+
       const elem = document.elementFromPoint(e.x, e.y);
       if (!elem) return;
 
       const button = classButtonMap[elem.className];
       if (button === undefined) return;
 
-      for (const cluster of Object.values(ButtonCluster).filter(
-        (c) => typeof c !== "string",
-      ))
-        if (lastPressedMap[cluster] !== button) {
-          resetCluster(cluster);
-          pressButton(InputSource.Display, button);
-          lastPressedMap[cluster] = button;
-        }
-    };
-    const resetCluster = (cluster: ButtonCluster) => {
-      for (const button of buttonClusterMap[cluster]) {
-        releaseButton(InputSource.Display, button);
+      if (lastTouchedMap[e.pointerId] !== button) {
+        resetId(e.pointerId);
+        pressButton(InputSource.Display, button);
+        lastTouchedMap[e.pointerId] = button;
       }
-      lastPressedMap[cluster] = undefined;
     };
     const handleDown = (e: PointerEvent) => {
+      e.preventDefault();
+
       const elem = document.elementFromPoint(e.x, e.y);
       if (!elem) return;
 
@@ -175,23 +159,41 @@ export function useSetupInputs(
       if (button === undefined) return;
 
       pressButton(InputSource.Display, button);
-      lastPressed = button;
+      lastTouchedMap[e.pointerId] = button;
     };
-    const reset = () => {
-      if (lastPressed !== undefined) {
-        releaseButton(InputSource.Display, lastPressed);
-        lastPressed = undefined;
+    const handleUp = (e: PointerEvent) => {
+      e.preventDefault();
+      resetId(e.pointerId);
+    };
+    const resetId = (pointerId: number) => {
+      if (lastTouchedMap[pointerId] !== undefined) {
+        releaseButton(InputSource.Display, lastTouchedMap[pointerId]);
+        delete lastTouchedMap[pointerId];
       }
     };
 
     window.addEventListener("pointerdown", handleDown);
-    window.addEventListener("pointermove", handleHover);
-    window.addEventListener("pointerup", reset);
+    window.addEventListener("pointermove", handleHold);
+    window.addEventListener("pointerup", handleUp);
+
+    const eventParams = { passive: false };
+    const ignore = (e: TouchEvent) => {
+      if (!e.target) return;
+
+      if (e.target instanceof Element) {
+        const button = classButtonMap[e.target.className];
+        if (button === undefined) return;
+
+        e.preventDefault();
+      }
+    };
+    document.body.addEventListener("touchend", ignore, eventParams);
 
     return () => {
       window.removeEventListener("pointerdown", handleDown);
-      window.removeEventListener("pointermove", handleHover);
-      window.removeEventListener("pointerup", reset);
+      window.removeEventListener("pointermove", handleHold);
+      window.removeEventListener("pointerup", handleUp);
+      document.body.removeEventListener("touchend", ignore);
     };
   }, [isMobile, pressButton, releaseButton]);
 

@@ -70,7 +70,7 @@ function App() {
               </div>
 
               <a className="select">
-                <p className="slanted-text">SELECT</p>
+                <p className="select-text slanted-text">SELECT</p>
               </a>
             </div>
 
@@ -85,7 +85,7 @@ function App() {
               </div>
 
               <a className="start">
-                <p className="slanted-text">START</p>
+                <p className="start-text slanted-text">START</p>
               </a>
             </div>
           </div>

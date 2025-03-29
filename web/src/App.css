@@ -152,7 +152,6 @@ canvas {
     content: "";
     position: absolute;
     display: none;
-    z-index: 2;
     width: 20%;
     height: 20%;
     top: 50%;
