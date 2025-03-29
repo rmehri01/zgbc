@@ -171,12 +171,8 @@ export function useZgbc(gamepad: React.RefObject<Gamepad | null>): Zgbc | null {
       let vibrationInterval: number | undefined = undefined;
       const rumbleChanged = (on: boolean) => {
         if (on) {
-          if (window.navigator.vibrate || gamepad.current !== null) {
+          if (gamepad.current !== null) {
             const gamepadVibrate = () => {
-              if (window.navigator.vibrate) {
-                window.navigator.vibrate(1000);
-              }
-
               if (gamepad.current !== null) {
                 void gamepad.current.vibrationActuator?.playEffect(
                   "dual-rumble",
@@ -194,9 +190,6 @@ export function useZgbc(gamepad: React.RefObject<Gamepad | null>): Zgbc | null {
           }
         } else {
           clearInterval(vibrationInterval);
-          if (window.navigator.vibrate) {
-            window.navigator.vibrate(0);
-          }
           if (gamepad.current !== null) {
             void gamepad.current.vibrationActuator?.reset();
           }
