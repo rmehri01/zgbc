@@ -6,6 +6,7 @@ import {
   SCREEN_WIDTH,
   Zgbc,
 } from "./wasm";
+import { loadAsync } from "jszip";
 
 export default function Display({
   zgbc,
@@ -20,8 +21,15 @@ export default function Display({
   const romRef = useRef<HTMLInputElement>(null);
 
   const handleLoadROM = async (file: File) => {
-    const bytes = await file.arrayBuffer();
-    zgbc?.loadROM(new Uint8Array(bytes));
+    const buffer = await file.arrayBuffer();
+    let bytes = new Uint8Array(buffer);
+
+    if (file.name.endsWith(".zip")) {
+      const zip = await loadAsync(bytes);
+      bytes = await Object.values(zip.files)[0].async("uint8array");
+    }
+
+    zgbc?.loadROM(bytes);
   };
 
   useEffect(() => {

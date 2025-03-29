@@ -41,7 +41,12 @@ export fn reset(gb: *gameboy.State) void {
 }
 
 export fn loadROM(gb: *gameboy.State, ptr: [*]u8, len: u32) void {
-    rom.load(allocator, gb, ptr, len, rumbleChanged) catch return;
+    rom.load(
+        allocator,
+        gb,
+        ptr[0..len],
+        rumbleChanged,
+    ) catch return;
 }
 
 var title: ?ByteArray = null;

@@ -92,11 +92,6 @@ function createZgbc(raw: ZgbcRaw, onLoad: () => void): Zgbc {
     return new Uint8Array(raw.memory.buffer, ramPtr, ramLen);
   };
 
-  let romBuf: {
-    ptr: GameboyPtr;
-    len: number;
-  };
-
   return {
     loadROM: (rom) => {
       if (supportsSaving()) {
@@ -106,23 +101,12 @@ function createZgbc(raw: ZgbcRaw, onLoad: () => void): Zgbc {
       }
 
       raw.reset(gb);
-      if (romBuf) {
-        raw.freeUint8Array(romBuf.ptr, romBuf.len);
-      }
 
-      const romBufPtr = raw.allocUint8Array(rom.length);
-      romBuf = {
-        ptr: romBufPtr,
-        len: rom.length,
-      };
-
-      const romArray = new Uint8Array(
-        raw.memory.buffer,
-        romBuf.ptr,
-        romBuf.len,
-      );
+      const ptr = raw.allocUint8Array(rom.length);
+      const romArray = new Uint8Array(raw.memory.buffer, ptr, rom.length);
       romArray.set(rom);
-      raw.loadROM(gb, romBuf.ptr, romBuf.len);
+      raw.loadROM(gb, ptr, rom.length);
+      raw.freeUint8Array(ptr, rom.length);
 
       const title = romTitle();
       const ram = getSaveRAM(title);

@@ -159,19 +159,22 @@ pub var rumble_changed: ?*const fn (bool) callconv(.c) void = null;
 pub fn load(
     allocator: mem.Allocator,
     gb: *gameboy.State,
-    ptr: [*]u8,
-    len: u32,
+    raw_data: []u8,
     rumble_changed_callback: ?*const fn (bool) callconv(.c) void,
 ) !void {
     rumble_changed = rumble_changed_callback;
+
+    const data = try allocator.alloc(u8, raw_data.len);
+    @memcpy(data, raw_data);
+
     gb.memory.rom = .{
-        .data = ptr[0..len],
+        .data = data,
         .title = value: {
-            const title_ptr: [*:0]u8 = @ptrCast(&ptr[ROM_HEADER_TITLE_START]);
+            const title_ptr: [*:0]u8 = @ptrCast(&data[ROM_HEADER_TITLE_START]);
             const title_len = mem.len(title_ptr);
             break :value title_ptr[0..@min(MAX_TITLE_LEN, title_len)];
         },
-        .mbc = switch (@as(CartridgeType, @enumFromInt(ptr[ROM_HEADER_CARTRIDGE_TYPE]))) {
+        .mbc = switch (@as(CartridgeType, @enumFromInt(data[ROM_HEADER_CARTRIDGE_TYPE]))) {
             .rom_only => .{ .rom_only = .{} },
             inline .mbc1, .mbc1_ram, .mbc1_ram_battery => |variant| @unionInit(
                 MbcState,
@@ -224,7 +227,7 @@ pub fn load(
             ),
         },
         .mbc_ram = value: {
-            const num_banks: u16 = switch (ptr[ROM_HEADER_RAM_SIZE]) {
+            const num_banks: u16 = switch (data[ROM_HEADER_RAM_SIZE]) {
                 0 => 0,
                 1 => 0,
                 2 => 1,
