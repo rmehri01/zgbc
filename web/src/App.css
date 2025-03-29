@@ -18,17 +18,17 @@
 
   @media only screen and (max-width: 728px) {
     @media (orientation: portrait) {
-      margin: 3vh 1vw;
+      margin: 3dvh 1dvw;
     }
   }
   @media only screen and (max-width: 1024px) {
     @media (orientation: landscape) {
-      margin: 5vh 0;
+      margin: 5dvh 0;
     }
   }
   @media only screen and (max-height: 700px) {
     @media (orientation: portrait) {
-      margin: 1vh 1vw;
+      margin: 1dvh 1dvw;
     }
   }
 }
@@ -36,7 +36,7 @@
 .display-container {
   display: flex;
   flex-direction: column;
-  margin: 7.5vh 0;
+  margin: 7.5dvh 0;
 
   @media only screen and (max-width: 1024px) {
     margin: auto;
@@ -47,10 +47,10 @@
   display: flex;
   direction: row;
   justify-content: space-between;
-  padding: 2vw;
+  padding: 2dvw;
 
   position: relative;
-  bottom: 50vw;
+  bottom: 50dvw;
 
   @media only screen and (max-width: 728px) {
     @media (orientation: portrait) {
@@ -62,7 +62,6 @@
   @media only screen and (max-width: 1024px) {
     @media (orientation: landscape) {
       position: absolute;
-      bottom: 92.5vh;
     }
   }
 }
@@ -74,15 +73,15 @@
   @media only screen and (max-width: 1024px) {
     @media (orientation: landscape) {
       position: absolute;
-      top: 10vh;
+      top: 10dvw;
     }
   }
 }
 
 canvas {
   z-index: 1;
-  width: 50vw;
-  height: 45vw;
+  width: 50dvw;
+  height: 45dvw;
   image-rendering: pixelated;
   border-radius: 8px;
   border: 4px solid;
@@ -91,14 +90,14 @@ canvas {
 
   @media only screen and (max-width: 728px) {
     @media (orientation: portrait) {
-      width: 95vw;
-      height: 85.5vw;
+      width: 95dvw;
+      height: 85.5dvw;
     }
   }
   @media only screen and (max-width: 1024px) {
     @media (orientation: landscape) {
-      width: 97.2vh;
-      height: 87.5vh;
+      width: 97.2dvh;
+      height: 87.5dvh;
     }
   }
 }
@@ -107,19 +106,19 @@ canvas {
   display: flex;
   direction: row;
   justify-content: space-between;
-  padding: 5vw 12.5px;
+  padding: 5dvw 12.5px;
 
   @media only screen and (max-width: 1024px) {
     @media (orientation: landscape) {
       position: relative;
-      top: -65vh;
-      left: 5vh;
+      bottom: 32.5dvw;
+      left: 2.5dvw;
       padding: 0;
     }
   }
   @media only screen and (max-height: 700px) {
     @media (orientation: portrait) {
-      padding: 1vh 15px;
+      padding: 1dvh 15px;
     }
   }
 }
@@ -322,13 +321,12 @@ canvas {
 
 .ab-container {
   position: relative;
-  right: 17.5vw;
-  bottom: 2.5vw;
+  right: 17.5dvw;
+  bottom: 2.5dvw;
 
   @media only screen and (max-width: 1024px) {
     @media (orientation: landscape) {
-      right: 12.5vw;
-      bottom: 2.5vw;
+      right: 12.5dvw;
     }
   }
 }
