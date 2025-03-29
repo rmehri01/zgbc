@@ -87,6 +87,7 @@ canvas {
   border: 4px solid;
   border-color: var(--light-gray);
   align-self: center;
+  cursor: pointer;
 
   @media only screen and (max-width: 728px) {
     @media (orientation: portrait) {
