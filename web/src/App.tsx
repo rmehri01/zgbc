@@ -1,10 +1,12 @@
 import "./App.css";
 import Display from "./Display";
-import { useZgbc } from "./wasm";
+import { Button, useZgbc } from "./wasm";
 import { useSetupInputs } from "./inputs";
+import { KeybindingRow } from "./KeybindingRow";
 import { useSetupAudio } from "./audio";
 import { useEffect, useRef, useState } from "react";
 import { useSetupSaving } from "./saving";
+import Modal from "react-modal";
 
 declare global {
   interface Document {
@@ -37,6 +39,17 @@ function App() {
   const { updateAudio } = useSetupAudio(zgbc);
   useSetupSaving(zgbc);
 
+  const [modalIsOpen, setIsOpen] = useState(false);
+
+  function openModal(e: React.MouseEvent<HTMLButtonElement, MouseEvent>) {
+    setIsOpen(true);
+    e.currentTarget.blur();
+  }
+
+  function closeModal() {
+    setIsOpen(false);
+  }
+
   return (
     <div className="display-container">
       <Display
@@ -45,9 +58,9 @@ function App() {
         updateAudio={updateAudio}
       />
 
-      {isMobile && (
+      {isMobile ? (
         <>
-          <div className="middle-container">
+          <div className="tm-text-container">
             <a
               className="tm-text"
               href="https://github.com/rmehri01/zgbc"
@@ -89,6 +102,42 @@ function App() {
               </a>
             </div>
           </div>
+        </>
+      ) : (
+        <>
+          <div>
+            <button className="help" onClick={openModal}>
+              Help
+            </button>
+            <Modal
+              isOpen={modalIsOpen}
+              onRequestClose={closeModal}
+              ariaHideApp={false}
+              className="content"
+              overlayClassName="overlay"
+            >
+              <h1>Keybindings</h1>
+              <hr />
+              <table>
+                <tbody>
+                  {Object.values(Button)
+                    .filter((b) => typeof b === "string")
+                    .map((name) => (
+                      <KeybindingRow key={name} buttonName={name} />
+                    ))}
+                </tbody>
+              </table>
+            </Modal>
+          </div>
+
+          <a
+            className="tm-text"
+            href="https://github.com/rmehri01/zgbc"
+            target="_blank"
+            rel="noreferrer"
+          >
+            zgbc
+          </a>
         </>
       )}
     </div>

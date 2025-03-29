@@ -1,15 +1,27 @@
+import "./inputs.css";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Button, Zgbc } from "./wasm";
+import { KEYBINDINGS_PREFIX } from "./KeybindingRow";
 
-const KEY_BUTTON_MAP: Record<string, Button> = {
-  KeyT: Button.Up,
-  KeyW: Button.Down,
-  KeyM: Button.Left,
-  KeyV: Button.Right,
+export const KEY_BUTTON_MAP: Record<string, Button> = {
+  KeyW: Button.Up,
+  KeyS: Button.Down,
+  KeyA: Button.Left,
+  KeyD: Button.Right,
   Enter: Button.Start,
   Space: Button.Select,
-  KeyU: Button.A,
-  KeyE: Button.B,
+  KeyK: Button.A,
+  KeyJ: Button.B,
+};
+export const BUTTON_KEY_MAP: Record<Button, string> = {
+  [Button.Up]: "KeyW",
+  [Button.Down]: "KeyS",
+  [Button.Left]: "KeyA",
+  [Button.Right]: "KeyD",
+  [Button.Start]: "Enter",
+  [Button.Select]: "Space",
+  [Button.A]: "KeyK",
+  [Button.B]: "KeyJ",
 };
 
 const GAMEPAD_BUTTON_MAP = new Map<number, Button>([
@@ -91,6 +103,20 @@ export function useSetupInputs(
     },
     [zgbc],
   );
+
+  useEffect(() => {
+    for (const button of Object.values(Button).filter(
+      (b) => typeof b !== "string",
+    )) {
+      const keybinding = window.localStorage.getItem(
+        `${KEYBINDINGS_PREFIX}${button}`,
+      );
+      if (keybinding) {
+        KEY_BUTTON_MAP[keybinding] = button;
+        BUTTON_KEY_MAP[button] = keybinding;
+      }
+    }
+  }, []);
 
   useEffect(() => {
     window.onkeydown = (e) => {
