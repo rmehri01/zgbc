@@ -225,7 +225,21 @@ export function useZgbc(gamepad: React.RefObject<Gamepad | null>): Zgbc | null {
       });
       raw = instance.exports as unknown as ZgbcRaw;
 
-      const initialZgbc = createZgbc(raw, () => setZgbc(initialZgbc));
+      const initialZgbc = createZgbc(raw, () => {
+        setZgbc({
+          loadROM: initialZgbc.loadROM,
+          romTitle: initialZgbc.romTitle,
+          supportsSaving: initialZgbc.supportsSaving,
+          getBatteryBackedRAM: initialZgbc.getBatteryBackedRAM,
+
+          stepCycles: initialZgbc.stepCycles,
+          pixels: initialZgbc.pixels,
+          buttonPress: initialZgbc.buttonPress,
+          buttonRelease: initialZgbc.buttonRelease,
+          readLeftAudioChannel: initialZgbc.readLeftAudioChannel,
+          readRightAudioChannel: initialZgbc.readRightAudioChannel,
+        });
+      });
       setZgbc(initialZgbc);
     }
 
