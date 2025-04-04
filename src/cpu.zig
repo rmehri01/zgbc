@@ -31,7 +31,16 @@ pub const State = struct {
             .ime = false,
             .halted = false,
             .halt_bug = false,
-            .registers = .{ .named16 = .{ .af = 0, .bc = 0, .de = 0, .hl = 0, .sp = 0, .pc = 0 } },
+            .registers = .{
+                .named16 = .{
+                    .af = 0,
+                    .bc = 0,
+                    .de = 0,
+                    .hl = 0,
+                    .sp = 0,
+                    .pc = 0,
+                },
+            },
             .cycles_since_run = 0,
         };
     }
@@ -114,55 +123,26 @@ pub fn step(gb: *gameboy.State) u8 {
 fn handleInterrupt(gb: *gameboy.State) bool {
     var handled = false;
 
-    if (gb.memory.io.ie.v_blank and gb.memory.io.intf.v_blank) {
-        gb.cpu.halted = false;
-        if (gb.cpu.ime) {
-            gb.memory.io.intf.v_blank = false;
-            gb.cpu.ime = false;
-            gb.tick();
-            gb.tick();
-            rst(gb, 0x40);
-            handled = true;
-        }
-    } else if (gb.memory.io.ie.lcd and gb.memory.io.intf.lcd) {
-        gb.cpu.halted = false;
-        if (gb.cpu.ime) {
-            gb.memory.io.intf.lcd = false;
-            gb.cpu.ime = false;
-            gb.tick();
-            gb.tick();
-            rst(gb, 0x48);
-            handled = true;
-        }
-    } else if (gb.memory.io.ie.timer and gb.memory.io.intf.timer) {
-        gb.cpu.halted = false;
-        if (gb.cpu.ime) {
-            gb.memory.io.intf.timer = false;
-            gb.cpu.ime = false;
-            gb.tick();
-            gb.tick();
-            rst(gb, 0x50);
-            handled = true;
-        }
-    } else if (gb.memory.io.ie.serial and gb.memory.io.intf.serial) {
-        gb.cpu.halted = false;
-        if (gb.cpu.ime) {
-            gb.memory.io.intf.serial = false;
-            gb.cpu.ime = false;
-            gb.tick();
-            gb.tick();
-            rst(gb, 0x58);
-            handled = true;
-        }
-    } else if (gb.memory.io.ie.joypad and gb.memory.io.intf.joypad) {
-        gb.cpu.halted = false;
-        if (gb.cpu.ime) {
-            gb.memory.io.intf.joypad = false;
-            gb.cpu.ime = false;
-            gb.tick();
-            gb.tick();
-            rst(gb, 0x60);
-            handled = true;
+    inline for (0..5) |idx| {
+        const InterruptEnableType = @typeInfo(@TypeOf(gb.memory.io.ie));
+        const InterruptFlagType = @typeInfo(@TypeOf(gb.memory.io.intf));
+
+        const interrupt_enable_field = InterruptEnableType.@"struct".fields[idx];
+        const interrupt_flag_field = InterruptFlagType.@"struct".fields[idx];
+
+        if (@field(gb.memory.io.ie, interrupt_enable_field.name) and
+            @field(gb.memory.io.intf, interrupt_flag_field.name))
+        {
+            gb.cpu.halted = false;
+            if (gb.cpu.ime) {
+                @field(gb.memory.io.intf, interrupt_flag_field.name) = false;
+                gb.cpu.ime = false;
+                gb.tick();
+                gb.tick();
+                rst(gb, 0x40 + idx * 8);
+                handled = true;
+            }
+            break;
         }
     }
 
@@ -1215,7 +1195,7 @@ fn set_x_r(gb: *gameboy.State, op_code: comptime_int) void {
 }
 
 fn illegal() void {
-    // TODO: handle
+    @panic("illegal instruction");
 }
 
 fn add_a_x(gb: *gameboy.State, src: u8) void {
@@ -1342,11 +1322,13 @@ fn fetch8(gb: *gameboy.State) u8 {
     return value;
 }
 
+/// Reads from the given memory `addr` and ticks the system.
 fn cycleRead(gb: *gameboy.State, addr: memory.Addr) u8 {
     gb.tick();
     return memory.readByte(gb, addr);
 }
 
+/// Writes `value` to the given memory `addr` and ticks the system.
 fn cycleWrite(gb: *gameboy.State, addr: memory.Addr, value: u8) void {
     gb.tick();
     memory.writeByte(gb, addr, value);
