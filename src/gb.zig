@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const mem = std.mem;
+const testing = std.testing;
 
 const apu = @import("apu.zig");
 const cpu = @import("cpu.zig");
@@ -58,3 +59,14 @@ pub const State = struct {
         self.cpu.cycles_since_run += timer.T_CYCLES_PER_M_CYCLE;
     }
 };
+
+test "does not leak memory" {
+    var gb = try State.init(testing.allocator);
+    defer gb.deinit(testing.allocator);
+}
+
+test "does not leak memory on reset" {
+    var gb = try State.init(testing.allocator);
+    gb.reset(testing.allocator);
+    defer gb.deinit(testing.allocator);
+}

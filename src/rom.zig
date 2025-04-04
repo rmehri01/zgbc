@@ -159,7 +159,7 @@ pub var rumble_changed: ?*const fn (bool) callconv(.c) void = null;
 pub fn load(
     allocator: mem.Allocator,
     gb: *gameboy.State,
-    raw_data: []u8,
+    raw_data: []const u8,
     rumble_changed_callback: ?*const fn (bool) callconv(.c) void,
 ) !void {
     rumble_changed = rumble_changed_callback;
@@ -240,4 +240,22 @@ pub fn load(
             break :value mbc_ram;
         },
     };
+}
+
+test "does not leak data when rom loaded" {
+    var gb = try gameboy.State.init(testing.allocator);
+    defer gb.deinit(testing.allocator);
+
+    const rom_data = [_]u8{0} ** 1024;
+    try load(testing.allocator, &gb, &rom_data, null);
+}
+
+test "does not leak data when rom loaded and reset" {
+    var gb = try gameboy.State.init(testing.allocator);
+    defer gb.deinit(testing.allocator);
+
+    const rom_data = [_]u8{0} ** 1024;
+    try load(testing.allocator, &gb, &rom_data, null);
+
+    gb.reset(testing.allocator);
 }
