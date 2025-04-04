@@ -1073,7 +1073,7 @@ fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
         0xff40 => {
             gb.memory.io.lcdc = @bitCast(value);
             if (!gb.memory.io.lcdc.lcd_enable) {
-                @memset(gb.ppu.pixels, ppu.colors[0]);
+                @memset(gb.ppu.back_pixels, ppu.colors[0]);
             }
         },
         0xff41 => gb.memory.io.stat = @bitCast(

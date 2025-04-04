@@ -118,7 +118,7 @@ export fn stepCycles(gb: *gameboy.State, cycles: i32) i32 {
 }
 
 export fn pixels(gb: *gameboy.State) [*]ppu.Pixel {
-    return gb.ppu.pixels;
+    return gb.ppu.front_pixels;
 }
 
 export fn buttonPress(gb: *gameboy.State, button: joypad.Button) void {

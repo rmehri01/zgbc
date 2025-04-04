@@ -14,29 +14,37 @@ pub const State = struct {
     /// The number of horizontal time units that have passed in the ppu.
     dots: u16,
     /// The pixels corresponding to the current state of the display.
-    pixels: *[SCREEN_WIDTH * SCREEN_HEIGHT]Pixel,
+    front_pixels: *[SCREEN_WIDTH * SCREEN_HEIGHT]Pixel,
+    /// The pixels corresponding to the next state of the display.
+    back_pixels: *[SCREEN_WIDTH * SCREEN_HEIGHT]Pixel,
     /// Internal line counter similar to `ly` that only gets incremented when
     /// the window is visible.
     window_line: u8,
 
     pub fn init(allocator: mem.Allocator) !@This() {
-        const pixels = try allocator.create([SCREEN_WIDTH * SCREEN_HEIGHT]Pixel);
+        const front_pixels = try allocator.create([SCREEN_WIDTH * SCREEN_HEIGHT]Pixel);
+        const back_pixels = try allocator.create([SCREEN_WIDTH * SCREEN_HEIGHT]Pixel);
 
-        return @This().initWithMem(pixels);
+        return @This().initWithMem(front_pixels, back_pixels);
     }
 
     pub fn reset(self: @This()) @This() {
-        return @This().initWithMem(self.pixels);
+        return @This().initWithMem(self.front_pixels, self.back_pixels);
     }
 
     pub fn deinit(self: @This(), allocator: mem.Allocator) void {
-        allocator.destroy(self.pixels);
+        allocator.destroy(self.front_pixels);
+        allocator.destroy(self.back_pixels);
     }
 
-    fn initWithMem(pixels: *[SCREEN_WIDTH * SCREEN_HEIGHT]Pixel) @This() {
+    fn initWithMem(
+        front_pixels: *[SCREEN_WIDTH * SCREEN_HEIGHT]Pixel,
+        back_pixels: *[SCREEN_WIDTH * SCREEN_HEIGHT]Pixel,
+    ) @This() {
         return @This(){
             .dots = 0,
-            .pixels = pixels,
+            .front_pixels = front_pixels,
+            .back_pixels = back_pixels,
             .window_line = 0,
         };
     }
@@ -141,6 +149,8 @@ pub fn step(gb: *gameboy.State) void {
                     if (gb.memory.io.stat.v_blank_int_select) {
                         gb.memory.io.intf.lcd = true;
                     }
+
+                    @memcpy(gb.ppu.front_pixels, gb.ppu.back_pixels);
                 } else {
                     gb.memory.io.stat.mode = .oam_scan;
 
@@ -242,7 +252,7 @@ fn renderLine(gb: *gameboy.State) void {
                 2 => gb.memory.io.bgp.id2,
                 3 => gb.memory.io.bgp.id3,
             };
-            gb.ppu.pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel_off] =
+            gb.ppu.back_pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel_off] =
                 colors[color_id];
         }
     }
@@ -284,7 +294,7 @@ fn renderLine(gb: *gameboy.State) void {
 
                     if (0 <= x_pixel and x_pixel < SCREEN_WIDTH and
                         (object.flags.priority == .above or
-                            gb.ppu.pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel] == colors[gb.memory.io.bgp.id0]))
+                            gb.ppu.back_pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel] == colors[gb.memory.io.bgp.id0]))
                     {
                         // always used unsigned addressing for objects
                         var tile_addr = memory.TILE_BLOCK0_START + @as(u16, tile_id) * 16;
@@ -312,7 +322,7 @@ fn renderLine(gb: *gameboy.State) void {
                             2 => palette.id2,
                             3 => palette.id3,
                         };
-                        gb.ppu.pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel] =
+                        gb.ppu.back_pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel] =
                             colors[color_id];
                     }
                 }
