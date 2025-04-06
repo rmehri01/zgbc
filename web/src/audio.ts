@@ -11,6 +11,7 @@ class SoundBuffer {
 
   constructor(
     public context: AudioContext,
+    public gainNode: GainNode,
     public bufferSize = 10,
     private debug = false,
   ) {}
@@ -68,7 +69,7 @@ class SoundBuffer {
 
     const source = this.context.createBufferSource();
     source.buffer = audioBuffer;
-    source.connect(this.context.destination);
+    source.connect(this.gainNode);
     source.onended = () => {
       this.chunks.shift();
       if (this.chunks.length === 0) {
@@ -103,7 +104,11 @@ export function useSetupAudio(zgbc: Zgbc | null): { updateAudio: () => void } {
         latencyHint: "interactive",
       });
 
-      soundBufferRef.current = new SoundBuffer(audioContext);
+      const gainNode = audioContext.createGain();
+      gainNode.gain.setValueAtTime(0.25, audioContext.currentTime);
+      gainNode.connect(audioContext.destination);
+
+      soundBufferRef.current = new SoundBuffer(audioContext, gainNode);
     }
   };
 
