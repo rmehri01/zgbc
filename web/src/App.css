@@ -80,8 +80,8 @@
 
 canvas {
   z-index: 1;
-  width: 50dvw;
-  height: 45dvw;
+  width: 44.4dvw;
+  height: 40dvw;
   image-rendering: pixelated;
   border-radius: 8px;
   border: 4px solid;

@@ -130,14 +130,16 @@ function App() {
             </Modal>
           </div>
 
-          <a
-            className="tm-text"
-            href="https://github.com/rmehri01/zgbc"
-            target="_blank"
-            rel="noreferrer"
-          >
-            zgbc
-          </a>
+          <div>
+            <a
+              className="tm-text"
+              href="https://github.com/rmehri01/zgbc"
+              target="_blank"
+              rel="noreferrer"
+            >
+              zgbc
+            </a>
+          </div>
         </>
       )}
     </div>
