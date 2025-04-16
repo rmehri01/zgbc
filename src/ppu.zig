@@ -99,6 +99,11 @@ const Object = packed struct(u32) {
         /// Whether the object is above or below the background and window.
         priority: enum(u1) { above = 0, below = 1 },
     },
+
+    /// We want the smaller x position to win.
+    fn lessThan(_: void, lhs: @This(), rhs: @This()) bool {
+        return lhs.x_pos < rhs.x_pos;
+    }
 };
 
 /// Same as the normal palette except 0 is unused since it's transparent.
@@ -193,6 +198,17 @@ fn renderLine(gb: *gameboy.State) void {
     if (!gb.memory.io.lcdc.lcd_enable) return;
 
     var rendered_window = false;
+    const Line = struct {
+        pixel: Pixel,
+        kind: enum(u1) { background, object },
+        is_transparent: bool,
+    };
+    var line = [_]Line{.{
+        .pixel = colors[gb.memory.io.bgp.id0],
+        .kind = .background,
+        .is_transparent = true,
+    }} ** SCREEN_WIDTH;
+
     if (gb.memory.io.lcdc.bg_window_enable_priority) {
         const data_area_start: memory.Addr = switch (gb.memory.io.lcdc.bg_window_tile_data_area) {
             .signed => memory.TILE_BLOCK2_START,
@@ -252,8 +268,11 @@ fn renderLine(gb: *gameboy.State) void {
                 2 => gb.memory.io.bgp.id2,
                 3 => gb.memory.io.bgp.id3,
             };
-            gb.ppu.back_pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel_off] =
-                colors[color_id];
+            line[x_pixel_off] = .{
+                .pixel = colors[color_id],
+                .kind = .background,
+                .is_transparent = color_id == 0,
+            };
         }
     }
     if (rendered_window) {
@@ -264,6 +283,14 @@ fn renderLine(gb: *gameboy.State) void {
     if (gb.memory.io.lcdc.obj_enable) {
         var obj_addr: memory.Addr = memory.OAM_START;
         const obj_size = @sizeOf(Object);
+        const obj_height: u5 = switch (gb.memory.io.lcdc.obj_size) {
+            .bit8 => 8,
+            .bit16 => 16,
+        };
+
+        // draw at most 10 objects
+        var visible_sprites: [10]Object = [_]Object{@bitCast(@as(u32, 0))} ** 10;
+        var visible_sprites_idx: u8 = 0;
 
         while (obj_addr < memory.OAM_START + 0xa0) : (obj_addr += obj_size) {
             // get the current oam object
@@ -272,61 +299,77 @@ fn renderLine(gb: *gameboy.State) void {
                 gb.memory.oam[rel_addr .. rel_addr + obj_size][0..obj_size].*,
             );
 
-            const obj_height: u5 = switch (gb.memory.io.lcdc.obj_size) {
-                .bit8 => 8,
-                .bit16 => 16,
-            };
-            if (object.y_pos <= gb.memory.io.ly + 16 and
+            if (object.x_pos != 0 and
+                object.y_pos <= gb.memory.io.ly + 16 and
                 gb.memory.io.ly + 16 < object.y_pos + obj_height)
             {
-                const palette = switch (object.flags.dmg_palette) {
-                    0 => gb.memory.io.obp0,
-                    1 => gb.memory.io.obp1,
-                };
+                visible_sprites[visible_sprites_idx] = object;
+                visible_sprites_idx += 1;
 
-                const tile_id = switch (gb.memory.io.lcdc.obj_size) {
-                    .bit8 => object.tile_id,
-                    .bit16 => object.tile_id & 0xfe,
-                };
-
-                for (0..8) |x_pixel_off| {
-                    const x_pixel: u8 = object.x_pos +% @as(u8, @intCast(x_pixel_off)) -% 8;
-
-                    if (0 <= x_pixel and x_pixel < SCREEN_WIDTH and
-                        (object.flags.priority == .above or
-                            gb.ppu.back_pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel] == colors[gb.memory.io.bgp.id0]))
-                    {
-                        // always used unsigned addressing for objects
-                        var tile_addr = memory.TILE_BLOCK0_START + @as(u16, tile_id) * 16;
-
-                        const y_pixel_off = gb.memory.io.ly + 16 - object.y_pos;
-                        tile_addr += (if (object.flags.y_flip)
-                            obj_height - 1 - y_pixel_off
-                        else
-                            y_pixel_off) * 2;
-
-                        const tile_data1 = memory.read_vram(gb, tile_addr);
-                        const tile_data2 = memory.read_vram(gb, tile_addr + 1);
-
-                        const x_bit_num: u3 = if (object.flags.x_flip)
-                            @intCast(7 - x_pixel_off)
-                        else
-                            @intCast(x_pixel_off);
-                        const lo = tile_data1 & (@as(u8, 0x80) >> x_bit_num) != 0;
-                        const hi = tile_data2 & (@as(u8, 0x80) >> x_bit_num) != 0;
-
-                        const palette_id = @as(u2, @intFromBool(hi)) << 1 | @intFromBool(lo);
-                        const color_id = switch (palette_id) {
-                            0 => continue,
-                            1 => palette.id1,
-                            2 => palette.id2,
-                            3 => palette.id3,
-                        };
-                        gb.ppu.back_pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel] =
-                            colors[color_id];
-                    }
+                if (visible_sprites_idx == visible_sprites.len) {
+                    break;
                 }
             }
         }
+
+        // the object with the smallest x position wins, otherwise
+        // it is decided by the order in the oam
+        mem.sort(Object, &visible_sprites, {}, Object.lessThan);
+
+        for (visible_sprites) |object| {
+            const palette = switch (object.flags.dmg_palette) {
+                0 => gb.memory.io.obp0,
+                1 => gb.memory.io.obp1,
+            };
+
+            const tile_id = switch (gb.memory.io.lcdc.obj_size) {
+                .bit8 => object.tile_id,
+                .bit16 => object.tile_id & 0xfe,
+            };
+
+            for (0..8) |x_pixel_off| {
+                const x_pixel: u8 = object.x_pos +% @as(u8, @intCast(x_pixel_off)) -% 8;
+
+                if (x_pixel < SCREEN_WIDTH and
+                    ((line[x_pixel].kind == .background and object.flags.priority == .above) or line[x_pixel].is_transparent))
+                {
+                    // always used unsigned addressing for objects
+                    var tile_addr = memory.TILE_BLOCK0_START + @as(u16, tile_id) * 16;
+
+                    const y_pixel_off = gb.memory.io.ly + 16 - object.y_pos;
+                    tile_addr += (if (object.flags.y_flip)
+                        obj_height - 1 - y_pixel_off
+                    else
+                        y_pixel_off) * 2;
+
+                    const tile_data1 = memory.read_vram(gb, tile_addr);
+                    const tile_data2 = memory.read_vram(gb, tile_addr + 1);
+
+                    const x_bit_num: u3 = if (object.flags.x_flip)
+                        @intCast(7 - x_pixel_off)
+                    else
+                        @intCast(x_pixel_off);
+                    const lo = tile_data1 & (@as(u8, 0x80) >> x_bit_num) != 0;
+                    const hi = tile_data2 & (@as(u8, 0x80) >> x_bit_num) != 0;
+
+                    const palette_id = @as(u2, @intFromBool(hi)) << 1 | @intFromBool(lo);
+                    const color_id = switch (palette_id) {
+                        0 => continue,
+                        1 => palette.id1,
+                        2 => palette.id2,
+                        3 => palette.id3,
+                    };
+                    line[x_pixel] = .{
+                        .pixel = colors[color_id],
+                        .kind = .object,
+                        .is_transparent = color_id == 0,
+                    };
+                }
+            }
+        }
+    }
+
+    for (0..SCREEN_WIDTH) |x_pixel_off| {
+        gb.ppu.back_pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel_off] = line[x_pixel_off].pixel;
     }
 }
