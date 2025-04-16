@@ -55,8 +55,18 @@ pub const State = struct {
             timer.step(self);
             self.timer.pending_cycles = 0;
         }
-        self.timer.pending_cycles += timer.T_CYCLES_PER_M_CYCLE;
-        self.cpu.cycles_since_run += timer.T_CYCLES_PER_M_CYCLE;
+
+        const cycles = timer.T_CYCLES_PER_M_CYCLE * @as(u8, self.speedMultiplier());
+        self.timer.pending_cycles += cycles;
+        self.cpu.cycles_since_run += cycles;
+    }
+
+    /// Multiplier depending on if the CPU is in double speed mode.
+    pub fn speedMultiplier(self: *@This()) u2 {
+        return switch (self.memory.io.key1.speed) {
+            .single => 1,
+            .double => 2,
+        };
     }
 };
 

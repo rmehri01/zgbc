@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const mem = std.mem;
+const math = std.math;
 
 const gameboy = @import("gb.zig");
 const memory = @import("memory.zig");
@@ -20,6 +21,10 @@ pub const State = struct {
     /// Internal line counter similar to `ly` that only gets incremented when
     /// the window is visible.
     window_line: u8,
+    /// (CGB only) Specifies the 8 background color palettes.
+    bg_color_ram: [0x40]u8,
+    /// (CGB only) Specifies the 8 object color palettes.
+    obj_color_ram: [0x40]u8,
 
     pub fn init(allocator: mem.Allocator) !@This() {
         const front_pixels = try allocator.create([SCREEN_WIDTH * SCREEN_HEIGHT]Pixel);
@@ -46,6 +51,8 @@ pub const State = struct {
             .front_pixels = front_pixels,
             .back_pixels = back_pixels,
             .window_line = 0,
+            .bg_color_ram = [_]u8{0} ** 0x40,
+            .obj_color_ram = [_]u8{0} ** 0x40,
         };
     }
 };
@@ -66,7 +73,7 @@ pub const Pixel = packed struct {
     a: u8,
 };
 
-pub const colors = [4]Pixel{
+const dmg_colors = [4]Pixel{
     // White: #e0f8d0
     .{ .r = 224, .g = 248, .b = 208, .a = 255 },
     // Light Gray: #88c070
@@ -97,7 +104,7 @@ const Object = packed struct(u32) {
         /// Vertically mirror the object.
         y_flip: bool,
         /// Whether the object is above or below the background and window.
-        priority: enum(u1) { above = 0, below = 1 },
+        priority: ObjectPriority,
     },
 
     /// We want the smaller x position to win.
@@ -106,7 +113,10 @@ const Object = packed struct(u32) {
     }
 };
 
-/// Same as the normal palette except 0 is unused since it's transparent.
+/// Whether the object is above or below the background and window.
+pub const ObjectPriority = enum(u1) { above = 0, below = 1 };
+
+/// Same as the `BackgroundPalette` except 0 is unused since it's transparent.
 pub const ObjectPalette = packed struct(u8) {
     _: u2 = 0,
     id1: u2,
@@ -114,9 +124,61 @@ pub const ObjectPalette = packed struct(u8) {
     id3: u2,
 };
 
+/// (CGB only) Color palette specification/index for background and objects.
+pub const ColorPaletteIndex = packed struct(u8) {
+    /// Used to address a byte in the background palette RAM.
+    addr: u6,
+    _: u1 = 1,
+    /// Whether to increment the `addr` field after writing to `bcpd`/`ocpd`.
+    auto_increment: bool,
+};
+
+/// (CGB only) Background/Window color palette data stored as RGB555.
+pub const ColorPaletteData = packed struct(u16) {
+    red: u5,
+    blue: u5,
+    green: u5,
+    _: u1 = 0,
+
+    fn to_pixel(self: @This()) Pixel {
+        return Pixel{
+            .r = @as(u8, self.red) << 3 | self.red >> 2,
+            .g = @as(u8, self.blue) << 3 | self.blue >> 2,
+            .b = @as(u8, self.green) << 3 | self.green >> 2,
+            .a = math.maxInt(u8),
+        };
+    }
+};
+
+/// (CGB only) Attributes for the corresponding tile-number map entry in VRAM bank 0.
+const TileAttributes = packed struct(u8) {
+    /// Which of BGP 0-7 to use.
+    palette: u3,
+    /// Which bank to fetch the tile from.
+    bank: u1,
+    _: u1 = 0,
+    /// Horizontally mirror the tile.
+    x_flip: bool,
+    /// Vertically mirror the tile.
+    y_flip: bool,
+    /// Whether color indices 1-3 of the background/window are drawn over objects.
+    priority: bool,
+
+    fn default() @This() {
+        return @This(){
+            .palette = 0,
+            .bank = 0,
+            .x_flip = false,
+            .y_flip = false,
+            .priority = false,
+        };
+    }
+};
+
 /// Execute a single step of the ppu.
 pub fn step(gb: *gameboy.State) void {
-    gb.ppu.dots += gb.timer.pending_cycles;
+    // ppu is not impacted by double speed mode
+    gb.ppu.dots += gb.timer.pending_cycles / gb.speedMultiplier();
 
     switch (gb.memory.io.stat.mode) {
         .oam_scan => {
@@ -198,18 +260,22 @@ fn renderLine(gb: *gameboy.State) void {
     if (!gb.memory.io.lcdc.lcd_enable) return;
 
     var rendered_window = false;
-    const Line = struct {
-        pixel: Pixel,
+    const LinePixel = struct {
+        palette_id: u2,
+        cgb_palette: u3,
+        dmg_palette: u1,
+        cgb_priority: bool,
         kind: enum(u1) { background, object },
-        is_transparent: bool,
     };
-    var line = [_]Line{.{
-        .pixel = colors[gb.memory.io.bgp.id0],
+    var line = [_]LinePixel{.{
+        .palette_id = 0,
+        .cgb_palette = 0,
+        .dmg_palette = 0,
+        .cgb_priority = false,
         .kind = .background,
-        .is_transparent = true,
     }} ** SCREEN_WIDTH;
 
-    if (gb.memory.io.lcdc.bg_window_enable_priority) {
+    if (gb.memory.io.key0 == .cgb or gb.memory.io.lcdc.bg_window_enable_priority) {
         const data_area_start: memory.Addr = switch (gb.memory.io.lcdc.bg_window_tile_data_area) {
             .signed => memory.TILE_BLOCK2_START,
             .unsigned => memory.TILE_BLOCK0_START,
@@ -237,9 +303,15 @@ fn renderLine(gb: *gameboy.State) void {
                 1 => memory.TILE_MAP1_START,
             };
 
-            const tile_id = memory.read_vram(gb, tile_map_start +
+            const tile_map_addr: memory.Addr = tile_map_start +
                 (@as(u16, tile_map_y) / 8) * 32 +
-                (tile_map_x / 8));
+                (tile_map_x / 8);
+            const tile_id = memory.read_vram(gb, tile_map_addr, 0);
+            const tile_attrs: TileAttributes = switch (gb.memory.io.key0) {
+                .cgb => @bitCast(memory.read_vram(gb, tile_map_addr, 1)),
+                .dmg => TileAttributes.default(),
+            };
+
             var tile_addr = switch (gb.memory.io.lcdc.bg_window_tile_data_area) {
                 .signed => value: {
                     const offset = @as(i8, @bitCast(tile_id)) * @as(i16, 16);
@@ -250,28 +322,27 @@ fn renderLine(gb: *gameboy.State) void {
                 },
                 .unsigned => data_area_start + @as(u16, tile_id) * 16,
             };
-
-            tile_addr += (tile_map_y % 8) * 2;
+            tile_addr += 2 * if (tile_attrs.y_flip) 7 - (tile_map_y % 8) else (tile_map_y % 8);
 
             // each tile is 16 bytes, and the pixel is spread across both bytes
-            const tile_data1 = memory.read_vram(gb, tile_addr);
-            const tile_data2 = memory.read_vram(gb, tile_addr + 1);
+            const tile_data1 = memory.read_vram(gb, tile_addr, tile_attrs.bank);
+            const tile_data2 = memory.read_vram(gb, tile_addr + 1, tile_attrs.bank);
 
-            const lo = tile_data1 & (@as(u8, 0x80) >> @intCast(tile_map_x % 8)) != 0;
-            const hi = tile_data2 & (@as(u8, 0x80) >> @intCast(tile_map_x % 8)) != 0;
+            const x_bit_num: u3 = if (tile_attrs.x_flip)
+                7 - @as(u3, @intCast(tile_map_x % 8))
+            else
+                @intCast(tile_map_x % 8);
+            const lo = tile_data1 & (@as(u8, 0x80) >> x_bit_num) != 0;
+            const hi = tile_data2 & (@as(u8, 0x80) >> x_bit_num) != 0;
 
             // use the palette to find the final color
             const palette_id = @as(u2, @intFromBool(hi)) << 1 | @intFromBool(lo);
-            const color_id = switch (palette_id) {
-                0 => gb.memory.io.bgp.id0,
-                1 => gb.memory.io.bgp.id1,
-                2 => gb.memory.io.bgp.id2,
-                3 => gb.memory.io.bgp.id3,
-            };
             line[x_pixel_off] = .{
-                .pixel = colors[color_id],
+                .palette_id = palette_id,
+                .cgb_palette = tile_attrs.palette,
+                .dmg_palette = undefined,
+                .cgb_priority = tile_attrs.priority,
                 .kind = .background,
-                .is_transparent = color_id == 0,
             };
         }
     }
@@ -289,8 +360,8 @@ fn renderLine(gb: *gameboy.State) void {
         };
 
         // draw at most 10 objects
-        var visible_sprites: [10]Object = [_]Object{@bitCast(@as(u32, 0))} ** 10;
-        var visible_sprites_idx: u8 = 0;
+        var visible_objects: [10]Object = [_]Object{@bitCast(@as(u32, 0))} ** 10;
+        var visible_object_idx: u8 = 0;
 
         while (obj_addr < memory.OAM_START + 0xa0) : (obj_addr += obj_size) {
             // get the current oam object
@@ -303,25 +374,35 @@ fn renderLine(gb: *gameboy.State) void {
                 object.y_pos <= gb.memory.io.ly + 16 and
                 gb.memory.io.ly + 16 < object.y_pos + obj_height)
             {
-                visible_sprites[visible_sprites_idx] = object;
-                visible_sprites_idx += 1;
+                visible_objects[visible_object_idx] = object;
+                visible_object_idx += 1;
 
-                if (visible_sprites_idx == visible_sprites.len) {
+                if (visible_object_idx == visible_objects.len) {
                     break;
                 }
             }
         }
 
-        // the object with the smallest x position wins, otherwise
+        // in DMG only the object with the smallest x position wins, otherwise
         // it is decided by the order in the oam
-        mem.sort(Object, &visible_sprites, {}, Object.lessThan);
+        if (gb.memory.io.key0 == .dmg) {
+            mem.sort(Object, &visible_objects, {}, Object.lessThan);
+        }
 
-        for (visible_sprites) |object| {
-            const palette = switch (object.flags.dmg_palette) {
-                0 => gb.memory.io.obp0,
-                1 => gb.memory.io.obp1,
-            };
-
+        // first we need to pick the first non-transparent object pixels
+        const ObjectPixel = struct {
+            palette_id: u2,
+            cgb_palette: u3,
+            dmg_palette: u1,
+            priority: ObjectPriority,
+        };
+        var object_line = [_]ObjectPixel{.{
+            .palette_id = 0,
+            .cgb_palette = 0,
+            .dmg_palette = 0,
+            .priority = .below,
+        }} ** SCREEN_WIDTH;
+        for (visible_objects) |object| {
             const tile_id = switch (gb.memory.io.lcdc.obj_size) {
                 .bit8 => object.tile_id,
                 .bit16 => object.tile_id & 0xfe,
@@ -330,9 +411,7 @@ fn renderLine(gb: *gameboy.State) void {
             for (0..8) |x_pixel_off| {
                 const x_pixel: u8 = object.x_pos +% @as(u8, @intCast(x_pixel_off)) -% 8;
 
-                if (x_pixel < SCREEN_WIDTH and
-                    ((line[x_pixel].kind == .background and object.flags.priority == .above) or line[x_pixel].is_transparent))
-                {
+                if (x_pixel < SCREEN_WIDTH and object_line[x_pixel].palette_id == 0) {
                     // always used unsigned addressing for objects
                     var tile_addr = memory.TILE_BLOCK0_START + @as(u16, tile_id) * 16;
 
@@ -342,8 +421,12 @@ fn renderLine(gb: *gameboy.State) void {
                     else
                         y_pixel_off) * 2;
 
-                    const tile_data1 = memory.read_vram(gb, tile_addr);
-                    const tile_data2 = memory.read_vram(gb, tile_addr + 1);
+                    const bank = switch (gb.memory.io.key0) {
+                        .cgb => object.flags.bank,
+                        .dmg => 0,
+                    };
+                    const tile_data1 = memory.read_vram(gb, tile_addr, bank);
+                    const tile_data2 = memory.read_vram(gb, tile_addr + 1, bank);
 
                     const x_bit_num: u3 = if (object.flags.x_flip)
                         @intCast(7 - x_pixel_off)
@@ -353,23 +436,84 @@ fn renderLine(gb: *gameboy.State) void {
                     const hi = tile_data2 & (@as(u8, 0x80) >> x_bit_num) != 0;
 
                     const palette_id = @as(u2, @intFromBool(hi)) << 1 | @intFromBool(lo);
-                    const color_id = switch (palette_id) {
-                        0 => continue,
-                        1 => palette.id1,
-                        2 => palette.id2,
-                        3 => palette.id3,
-                    };
-                    line[x_pixel] = .{
-                        .pixel = colors[color_id],
-                        .kind = .object,
-                        .is_transparent = color_id == 0,
+                    object_line[x_pixel] = .{
+                        .palette_id = palette_id,
+                        .cgb_palette = object.flags.cgb_palette,
+                        .dmg_palette = object.flags.dmg_palette,
+                        .priority = object.flags.priority,
                     };
                 }
+            }
+        }
+
+        // next we mix the object and background pixels based on their priority
+        for (0..SCREEN_WIDTH) |x_pixel_off| {
+            // if the object pixel is transparent, skip it
+            if (object_line[x_pixel_off].palette_id == 0) continue;
+
+            const obj_has_priority = switch (gb.memory.io.key0) {
+                .cgb => line[x_pixel_off].palette_id == 0 or
+                    !gb.memory.io.lcdc.bg_window_enable_priority or
+                    (!line[x_pixel_off].cgb_priority and object_line[x_pixel_off].priority == .above),
+                .dmg => line[x_pixel_off].palette_id == 0 or
+                    (line[x_pixel_off].kind == .background and object_line[x_pixel_off].priority == .above),
+            };
+            if (obj_has_priority) {
+                line[x_pixel_off] = .{
+                    .palette_id = object_line[x_pixel_off].palette_id,
+                    .cgb_palette = object_line[x_pixel_off].cgb_palette,
+                    .dmg_palette = object_line[x_pixel_off].dmg_palette,
+                    .cgb_priority = undefined,
+                    .kind = .object,
+                };
             }
         }
     }
 
     for (0..SCREEN_WIDTH) |x_pixel_off| {
-        gb.ppu.back_pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel_off] = line[x_pixel_off].pixel;
+        const palette_id = line[x_pixel_off].palette_id;
+        const color = switch (gb.memory.io.key0) {
+            .cgb => value: {
+                const color_data_size = @sizeOf(ColorPaletteData);
+                const color_offset: u7 =
+                    @as(u6, line[x_pixel_off].cgb_palette) * 4 * color_data_size +
+                    @as(u6, palette_id) * color_data_size;
+                const color_ram = switch (line[x_pixel_off].kind) {
+                    .background => gb.ppu.bg_color_ram,
+                    .object => gb.ppu.obj_color_ram,
+                };
+                const color_data: ColorPaletteData = @bitCast(
+                    color_ram[color_offset .. color_offset + color_data_size][0..color_data_size].*,
+                );
+                break :value color_data.to_pixel();
+            },
+            .dmg => value: {
+                const color_id = switch (line[x_pixel_off].kind) {
+                    .background => switch (palette_id) {
+                        0 => gb.memory.io.bgp.id0,
+                        1 => gb.memory.io.bgp.id1,
+                        2 => gb.memory.io.bgp.id2,
+                        3 => gb.memory.io.bgp.id3,
+                    },
+                    .object => id_value: {
+                        const palette = switch (line[x_pixel_off].dmg_palette) {
+                            0 => gb.memory.io.obp0,
+                            1 => gb.memory.io.obp1,
+                        };
+                        const color_id = switch (palette_id) {
+                            // if the object's palette id was 0, we would use the background instead
+                            0 => unreachable,
+                            1 => palette.id1,
+                            2 => palette.id2,
+                            3 => palette.id3,
+                        };
+                        break :id_value color_id;
+                    },
+                };
+                break :value dmg_colors[color_id];
+            },
+        };
+
+        gb.ppu.back_pixels[@as(u16, gb.memory.io.ly) * SCREEN_WIDTH + x_pixel_off] = color;
     }
 }

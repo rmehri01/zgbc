@@ -492,8 +492,16 @@ fn rrca(gb: *gameboy.State) void {
     gb.cpu.registers.named8.f.c = bit0;
 }
 
+/// Enter CPU very low power mode. Also used to switch between
+/// CGB double speed and normal speed CPU modes.
 fn stop(gb: *gameboy.State) void {
-    _ = gb;
+    if (gb.memory.io.key1.armed) {
+        gb.memory.io.key1.armed = false;
+        gb.memory.io.key1.speed = switch (gb.memory.io.key1.speed) {
+            .single => .double,
+            .double => .single,
+        };
+    }
 }
 
 /// Rotate the contents of register `A` to the left,

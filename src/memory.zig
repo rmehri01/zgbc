@@ -22,10 +22,11 @@ pub const TILE_MAP0_START = 0x9800;
 pub const TILE_MAP1_START = 0x9c00;
 pub const MBC_RAM_START = 0xa000;
 pub const RAM_START = 0xc000;
+pub const BANKED_RAM_START = 0xd000;
 pub const OAM_START = 0xfe00;
 pub const HRAM_START = 0xff80;
 
-const dmg_boot_rom = @embedFile("boot/dmg.bin");
+const boot_rom = @embedFile("boot/cgb.bin");
 
 /// Tracks the internal state of memory.
 pub const State = struct {
@@ -34,9 +35,9 @@ pub const State = struct {
     /// The cartridge that is currently loaded.
     rom: ?rom.State,
     /// Video RAM.
-    vram: *[0x2000]u8,
+    vram: *[0x4000]u8,
     /// Work RAM.
-    ram: *[0x2000]u8,
+    ram: *[0x8000]u8,
     /// Object attribute memory.
     oam: *[0xa0]u8,
     /// High RAM.
@@ -170,7 +171,7 @@ pub const State = struct {
         wave_pattern_ram: [16]packed struct(u8) { lower: u4, upper: u4 },
         /// LCD control register.
         lcdc: packed struct(u8) {
-            /// (non-CGB only) When cleared, the background and window are blank.
+            /// (DMG only) When cleared, the background and window are blank.
             /// (CGB only) When cleared, the background and window lose priority.
             bg_window_enable_priority: bool,
             /// Whether objects are displayed or not.
@@ -220,23 +221,60 @@ pub const State = struct {
         lyc: u8,
         /// OAM DMA source address and start.
         dma: u8,
-        /// Background palette data.
+        /// (DMG only) Background palette data.
         bgp: packed struct(u8) {
             id0: u2,
             id1: u2,
             id2: u2,
             id3: u2,
         },
-        /// Object palette data 0.
+        /// (DMG only) Object palette data 0.
         obp0: ppu.ObjectPalette,
-        /// Object palette data 1.
+        /// (DMG only) Object palette data 1.
         obp1: ppu.ObjectPalette,
         /// Window Y position.
         wy: u8,
         /// Window X position plus 7.
         wx: u8,
+        /// (CGB only) CPU mode select.
+        key0: enum(u1) { cgb = 0, dmg = 1 },
+        /// (CGB only) Prepare speed switch.
+        key1: packed struct(u8) {
+            /// Prepared to switch on the next `stop` instruction.
+            armed: bool,
+            _: u6 = math.maxInt(u6),
+            /// The current CPU speed of the gameboy.
+            speed: enum(u1) { single = 0, double = 1 },
+        },
+        /// (CGB only) VRAM bank.
+        vbk: u1,
         /// Set to non-zero to disable boot ROM, cannot be unset.
         boot_rom_finished: bool,
+        /// (CGB only) VRAM DMA source, high.
+        hdma1: u8,
+        /// (CGB only) VRAM DMA source, low.
+        hdma2: u8,
+        /// (CGB only) VRAM DMA destination, high.
+        hdma3: u8,
+        /// (CGB only) VRAM DMA destination, low.
+        hdma4: u8,
+        /// (CGB only) VRAM DMA length/mode/start.
+        hdma5: packed struct(u8) {
+            /// The transfer length divided by 0x10 and minus 1.
+            length: u7,
+            mode: enum(u1) {
+                /// All data transferred at once.
+                general = 0,
+                /// Transfers 0x10 bytes of data during each h_blank.
+                h_blank = 1,
+            },
+        },
+        /// (CGB only) Background color palette specification/index.
+        bcps_bgpi: ppu.ColorPaletteIndex,
+        /// (CGB only) Object color palette specification/index.
+        ocps_obpi: ppu.ColorPaletteIndex,
+        /// (CGB only) WRAM bank.
+        svbk: u3,
         /// Interrupt enable, controls whether the corresponding handler may be called.
         /// This isn't actually part of the io register range but conceptually it is.
         ie: packed struct(u8) {
@@ -250,8 +288,8 @@ pub const State = struct {
     },
 
     pub fn init(allocator: mem.Allocator) !@This() {
-        const vram = try allocator.create([0x2000]u8);
-        const ram = try allocator.create([0x2000]u8);
+        const vram = try allocator.create([0x4000]u8);
+        const ram = try allocator.create([0x8000]u8);
         const oam = try allocator.create([0xa0]u8);
         const hram = try allocator.create([0x7f]u8);
 
@@ -283,13 +321,13 @@ pub const State = struct {
     }
 
     fn initWithMem(
-        vram: *[0x2000]u8,
-        ram: *[0x2000]u8,
+        vram: *[0x4000]u8,
+        ram: *[0x8000]u8,
         oam: *[0xa0]u8,
         hram: *[0x7f]u8,
     ) @This() {
         return @This(){
-            .boot_rom = dmg_boot_rom,
+            .boot_rom = boot_rom,
             .rom = null,
             .vram = vram,
             .ram = ram,
@@ -437,7 +475,30 @@ pub const State = struct {
                 },
                 .wy = 0,
                 .wx = 0,
+                .key0 = .cgb,
+                .key1 = .{
+                    .speed = .single,
+                    .armed = false,
+                },
+                .vbk = 0,
                 .boot_rom_finished = false,
+                .hdma1 = 0,
+                .hdma2 = 0,
+                .hdma3 = 0,
+                .hdma4 = 0,
+                .hdma5 = .{
+                    .length = math.maxInt(u7),
+                    .mode = .h_blank,
+                },
+                .svbk = 1,
+                .bcps_bgpi = .{
+                    .addr = 0,
+                    .auto_increment = false,
+                },
+                .ocps_obpi = .{
+                    .addr = 0,
+                    .auto_increment = false,
+                },
                 .ie = .{
                     .v_blank = false,
                     .lcd = false,
@@ -456,7 +517,7 @@ pub fn readByte(gb: *gameboy.State, addr: Addr) u8 {
     return switch (addr) {
         0x0000...0x3fff => read_rom(gb, addr),
         0x4000...0x7fff => read_mbc_rom(gb, addr),
-        0x8000...0x9fff => read_vram(gb, addr),
+        0x8000...0x9fff => read_vram(gb, addr, gb.memory.io.vbk),
         0xa000...0xbfff => read_mbc_ram(gb, addr),
         0xc000...0xcfff => read_ram(gb, addr),
         0xd000...0xdfff => read_banked_ram(gb, addr),
@@ -470,7 +531,9 @@ pub fn readByte(gb: *gameboy.State, addr: Addr) u8 {
 }
 
 fn read_rom(gb: *gameboy.State, addr: Addr) u8 {
-    if (!gb.memory.io.boot_rom_finished and addr < 0x100) {
+    if (!gb.memory.io.boot_rom_finished and
+        (addr < 0x100 or (0x200 <= addr and addr < 0x900)))
+    {
         return gb.memory.boot_rom[addr];
     }
 
@@ -507,8 +570,8 @@ fn read_mbc_rom(gb: *gameboy.State, addr: Addr) u8 {
     return 0xff;
 }
 
-pub fn read_vram(gb: *gameboy.State, addr: Addr) u8 {
-    return gb.memory.vram[addr - VRAM_START];
+pub fn read_vram(gb: *gameboy.State, addr: Addr, bank: u1) u8 {
+    return gb.memory.vram[(addr - VRAM_START) + @as(u16, 0x2000) * bank];
 }
 
 fn read_mbc_ram(gb: *gameboy.State, addr: Addr) u8 {
@@ -559,7 +622,7 @@ fn read_ram(gb: *gameboy.State, addr: Addr) u8 {
 }
 
 fn read_banked_ram(gb: *gameboy.State, addr: Addr) u8 {
-    return gb.memory.ram[addr - RAM_START];
+    return gb.memory.ram[(addr - BANKED_RAM_START) + @as(u16, 0x1000) * gb.memory.io.svbk];
 }
 
 fn read_oam(gb: *gameboy.State, addr: Addr) u8 {
@@ -628,7 +691,16 @@ fn read_io_registers(gb: *gameboy.State, addr: Addr) u8 {
         0xff49 => @bitCast(gb.memory.io.obp1),
         0xff4a => gb.memory.io.wy,
         0xff4b => gb.memory.io.wx,
+        0xff4c => 0xfb | (@as(u8, @intFromEnum(gb.memory.io.key0)) << 2),
+        0xff4d => @bitCast(gb.memory.io.key1),
+        0xff4f => @as(u8, 0xfe) | gb.memory.io.vbk,
         0xff50 => @as(u8, 0xfe) | @intFromBool(gb.memory.io.boot_rom_finished),
+        0xff55 => @bitCast(gb.memory.io.hdma5),
+        0xff68 => @bitCast(gb.memory.io.bcps_bgpi),
+        0xff69 => gb.ppu.bg_color_ram[gb.memory.io.bcps_bgpi.addr],
+        0xff6a => @bitCast(gb.memory.io.ocps_obpi),
+        0xff6b => gb.ppu.obj_color_ram[gb.memory.io.ocps_obpi.addr],
+        0xff70 => @as(u8, 0xf8) | gb.memory.io.svbk,
         else => 0xff,
     };
 }
@@ -766,7 +838,9 @@ fn write_mbc_rom(gb: *gameboy.State, addr: Addr, value: u8) void {
 }
 
 fn write_vram(gb: *gameboy.State, addr: Addr, value: u8) void {
-    gb.memory.vram[addr - VRAM_START] = value;
+    gb.memory.vram[
+        (addr - VRAM_START) + @as(u16, 0x2000) * gb.memory.io.vbk
+    ] = value;
 }
 
 fn write_mbc_ram(gb: *gameboy.State, addr: Addr, value: u8) void {
@@ -815,7 +889,7 @@ fn write_ram(gb: *gameboy.State, addr: Addr, value: u8) void {
 }
 
 fn write_banked_ram(gb: *gameboy.State, addr: Addr, value: u8) void {
-    gb.memory.ram[addr - RAM_START] = value;
+    gb.memory.ram[(addr - BANKED_RAM_START) + @as(u16, 0x1000) * gb.memory.io.svbk] = value;
 }
 
 fn write_oam(gb: *gameboy.State, addr: Addr, value: u8) void {
@@ -1073,7 +1147,7 @@ fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
         0xff40 => {
             gb.memory.io.lcdc = @bitCast(value);
             if (!gb.memory.io.lcdc.lcd_enable) {
-                @memset(gb.ppu.back_pixels, ppu.colors[0]);
+                @memset(gb.ppu.back_pixels, @bitCast(@as(u32, 0)));
             }
         },
         0xff41 => gb.memory.io.stat = @bitCast(
@@ -1096,9 +1170,59 @@ fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
         0xff49 => gb.memory.io.obp1 = @bitCast(value),
         0xff4a => gb.memory.io.wy = value,
         0xff4b => gb.memory.io.wx = value,
+        0xff4c => {
+            if (gb.memory.io.boot_rom_finished)
+                return;
+
+            gb.memory.io.key0 = @enumFromInt(@as(u1, @truncate(value >> 2)));
+        },
+        0xff4d => gb.memory.io.key1.armed = value & 1 != 0,
+        0xff4f => gb.memory.io.vbk = @truncate(value),
         0xff50 => {
             gb.memory.io.boot_rom_finished =
                 gb.memory.io.boot_rom_finished or value != 0;
+        },
+        0xff51 => gb.memory.io.hdma1 = value,
+        0xff52 => gb.memory.io.hdma2 = value & 0xf0,
+        0xff53 => gb.memory.io.hdma3 = value & 0x0f,
+        0xff54 => gb.memory.io.hdma4 = value & 0xf0,
+        0xff55 => {
+            gb.memory.io.hdma5 = @bitCast(value);
+
+            // TODO: naive
+            const src = @as(u16, gb.memory.io.hdma1) << 8 | gb.memory.io.hdma2;
+            const dst = @as(u16, gb.memory.io.hdma3) << 8 | gb.memory.io.hdma4;
+            const length = (@as(u16, gb.memory.io.hdma5.length) + 1) * 0x10;
+
+            for (0..length) |off| {
+                const src_addr: Addr = src + @as(u16, @intCast(off));
+                const dst_addr: Addr = dst + @as(u16, @intCast(off));
+
+                const byte = readByte(gb, src_addr);
+                writeByte(gb, dst_addr, byte);
+            }
+
+            gb.memory.io.hdma5 = @bitCast(@as(u8, 0xff));
+        },
+        0xff68 => gb.memory.io.bcps_bgpi = @bitCast(0x40 | value),
+        0xff69 => {
+            gb.ppu.bg_color_ram[gb.memory.io.bcps_bgpi.addr] = value;
+            if (gb.memory.io.bcps_bgpi.auto_increment) {
+                gb.memory.io.bcps_bgpi.addr +%= 1;
+            }
+        },
+        0xff6a => gb.memory.io.ocps_obpi = @bitCast(0x40 | value),
+        0xff6b => {
+            gb.ppu.obj_color_ram[gb.memory.io.ocps_obpi.addr] = value;
+            if (gb.memory.io.ocps_obpi.auto_increment) {
+                gb.memory.io.ocps_obpi.addr +%= 1;
+            }
+        },
+        0xff70 => {
+            gb.memory.io.svbk = @truncate(value);
+            if (gb.memory.io.svbk == 0) {
+                gb.memory.io.svbk = 1;
+            }
         },
         else => {},
     }

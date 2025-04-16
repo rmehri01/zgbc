@@ -106,7 +106,7 @@ export fn setBatteryBackedRAM(gb: *gameboy.State, ptr: [*]u8, len: u32) void {
 
 /// Try to run for the given amount of `cycles`, returning the delta.
 export fn stepCycles(gb: *gameboy.State, cycles: i32) i32 {
-    const target_cycles = cycles;
+    const target_cycles = cycles * gb.speedMultiplier();
     var consumed_cycles: i32 = 0;
 
     while (consumed_cycles < target_cycles) {

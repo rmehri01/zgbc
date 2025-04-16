@@ -237,7 +237,8 @@ pub const Envelope = struct {
 pub fn step(gb: *gameboy.State) void {
     if (!gb.memory.io.nr52.enable) return;
 
-    for (0..gb.timer.pending_cycles) |_| {
+    // apu is not impacted by double speed mode
+    for (0..gb.timer.pending_cycles / gb.speedMultiplier()) |_| {
         // step all channels
         stepSquareChannel(gb, .ch1);
         stepSquareChannel(gb, .ch2);
