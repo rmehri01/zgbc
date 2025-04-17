@@ -273,6 +273,8 @@ pub const State = struct {
         bcps_bgpi: ppu.ColorPaletteIndex,
         /// (CGB only) Object color palette specification/index.
         ocps_obpi: ppu.ColorPaletteIndex,
+        /// (CGB only) Object priority mode.
+        opri: enum(u1) { cgb = 0, dmg = 1 },
         /// (CGB only) WRAM bank.
         svbk: u3,
         /// Interrupt enable, controls whether the corresponding handler may be called.
@@ -499,6 +501,7 @@ pub const State = struct {
                     .addr = 0,
                     .auto_increment = false,
                 },
+                .opri = .cgb,
                 .ie = .{
                     .v_blank = false,
                     .lcd = false,
@@ -700,6 +703,7 @@ fn read_io_registers(gb: *gameboy.State, addr: Addr) u8 {
         0xff69 => gb.ppu.bg_color_ram[gb.memory.io.bcps_bgpi.addr],
         0xff6a => @bitCast(gb.memory.io.ocps_obpi),
         0xff6b => gb.ppu.obj_color_ram[gb.memory.io.ocps_obpi.addr],
+        0xff6c => @as(u8, 0xfe) | @intFromEnum(gb.memory.io.opri),
         0xff70 => @as(u8, 0xf8) | gb.memory.io.svbk,
         else => 0xff,
     };
@@ -1218,6 +1222,7 @@ fn write_io_registers(gb: *gameboy.State, addr: Addr, value: u8) void {
                 gb.memory.io.ocps_obpi.addr +%= 1;
             }
         },
+        0xff6c => gb.memory.io.opri = @enumFromInt(@as(u1, @truncate(value))),
         0xff70 => {
             gb.memory.io.svbk = @truncate(value);
             if (gb.memory.io.svbk == 0) {

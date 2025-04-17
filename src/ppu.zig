@@ -385,7 +385,7 @@ fn renderLine(gb: *gameboy.State) void {
 
         // in DMG only the object with the smallest x position wins, otherwise
         // it is decided by the order in the oam
-        if (gb.memory.io.key0 == .dmg) {
+        if (gb.memory.io.opri == .dmg) {
             mem.sort(Object, &visible_objects, {}, Object.lessThan);
         }
 
